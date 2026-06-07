@@ -86,37 +86,8 @@
   </form>
 </div>
 
-<script>
-(function () {
-  const brandSel = document.getElementById('id_brand');
-  const modelSel = document.getElementById('id_truck_model');
-  const currentModel = '{{ form.instance.truck_model_id|default:"" }}';
-
-  // JSON data: [{"pk": 1, "name": "Modelo X", "brand_id": 1}, ...] for client-side filtering
-  var modelData = JSON.parse('{{ model_json|escapejs }}');
-
-  function loadModels(brandPk, selectValue) {
-    modelSel.innerHTML = '<option value="">Selecione o modelo</option>';
-    if (!brandPk) return;
-    modelData.forEach(function(m) {
-      if (String(m.brand_id) === String(brandPk)) {
-        const opt = document.createElement('option');
-        opt.value = m.pk;
-        opt.textContent = m.name;
-        if (String(m.pk) === String(selectValue)) opt.selected = true;
-        modelSel.appendChild(opt);
-      }
-    });
-  }
-
-  brandSel.addEventListener('change', function () {
-    loadModels(this.value, '');
-  });
-
-  // On page load: filter models for the current brand
-  if (brandSel.value) {
-    loadModels(brandSel.value, currentModel);
-  }
-})();
-</script>
+{% comment %}
+  No JS needed. All models are loaded directly from the form queryset.
+  The backend validates model selection properly.
+{% endcomment %}
 {% endblock %}
