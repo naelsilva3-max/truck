@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Employee & Truck Control{% endblock %}</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a href="/">
+        <img src="{% static 'images/logo.png' %}" alt="Logomarca" class="navbar-logo">
+        Employee & Truck Control
+      </a>
+    </div>
+    <div class="navbar-menu">
+      {% if user.is_authenticated %}
+        <a href="{% url 'employees:list' %}">Funcionários</a>
+        <a href="{% url 'trucks:list' %}">Caminhões</a>
+        <a href="{% url 'presence_history' %}">Histórico</a>
+        <a href="{% url 'trucks:report_pdf' %}" target="_blank">Relatório PDF</a>
+        <a href="{% url 'biometric:simulator' %}">Simulador</a>
+        <span class="navbar-user">Olá, {{ user.username }}</span>
+        <form method="post" action="{% url 'logout' %}" style="display:inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn-link">Sair</button>
+        </form>
+      {% else %}
+        <a href="{% url 'login' %}">Entrar</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  <div class="container">
+    {% if messages %}
+      <div class="messages">
+        {% for message in messages %}
+          <div class="alert alert--{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </div>
+
+  <footer class="footer">
+    <p>&copy; {% now "Y" %} Employee & Truck Control</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Simulador Biométrico — Employee & Truck Control{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🔬 Simulador Biométrico</h1>
+  <a href="{% url 'presence_history' %}" class="btn btn--secondary">Ver Histórico IN/OUT</a>
+</div>
+
+<div class="alert alert--warning">
+  <strong>Ambiente de teste.</strong> Este simulador envia o template biométrico cadastrado diretamente para o sistema, como se o funcionário tivesse passado o dedo no leitor. Use apenas para testes.
+</div>
+
+{% if result %}
+<div class="card mb-3" style="border-left: 4px solid {% if result.is_in %}var(--color-success){% else %}var(--color-error){% endif %};">
+  <h2>Resultado do Scan</h2>
+  <div class="presence-status">
+    {% if result.is_in %}
+      <span class="presence-badge presence-badge--in">⬆ ENTRADA — IN</span>
+    {% else %}
+      <span class="presence-badge presence-badge--out">⬇ SAÍDA — OUT</span>
+    {% endif %}
+    <strong>{{ result.employee.name }}</strong>
+    <span class="text-muted">{{ result.last_ts|date:"d/m/Y H:i:s" }}</span>
+  </div>
+  {% if result.record %}
+    {% if result.is_in %}
+      <p class="text-muted mt-2">Novo registro de ponto aberto às {{ result.record.entry_time|date:"H:i:s" }}.</p>
+    {% else %}
+      <p class="text-muted mt-2">Saída registrada às {{ result.record.exit_time|date:"H:i:s" }} (entrada {{ result.record.entry_time|date:"H:i:s" }}).</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Funcionários com Biometria Cadastrada</h2>
+  {% if enrolled %}
+  <p class="text-muted mb-3" style="font-size:.85rem;">
+    Selecione um funcionário e clique em <strong>Simular Scan</strong> para processar um evento biométrico.
+    O código exibido é um hash parcial do template (SHA-256), útil para identificação.
+  </p>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Funcionário</th>
+          <th>Código do Template</th>
+          <th>Status Atual</th>
+          <th>Última Marcação</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in enrolled %}
+        <tr>
+          <td>
+            <a href="{% url 'employees:detail' row.employee.pk %}">{{ row.employee.name }}</a>
+          </td>
+          <td>
+            <code style="font-size:.8rem; background:#f4f6f9; padding:.2em .5em; border-radius:4px;">{{ row.code }}</code>
+          </td>
+          <td>
+            {% if row.is_in %}
+              <span class="badge badge--success">⬆ IN</span>
+            {% else %}
+              <span class="badge badge--danger">⬇ OUT</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.last_ts %}
+              {{ row.last_ts|date:"d/m/Y H:i:s" }}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" style="display:inline;">
+              {% csrf_token %}
+              <input type="hidden" name="employee_pk" value="{{ row.employee.pk }}">
+              <button type="submit" class="btn btn--sm {% if row.is_in %}btn--danger{% else %}btn--success{% endif %}">
+                {% if row.is_in %}Simular Saída{% else %}Simular Entrada{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <p>Nenhum funcionário com biometria cadastrada.</p>
+    <a href="{% url 'employees:list' %}" class="btn btn--primary">Cadastrar Biometria</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

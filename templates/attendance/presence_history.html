@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Histórico{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Histórico de Saída / Entrada</h1>
+    <a href="{% url 'trucks:global_assignments' %}" class="btn btn--secondary">Ver Associação de Caminhões</a>
+</div>
+
+<div class="card mb-3">
+  <form method="get" class="filter-form">
+    <div class="filter-row">
+      <div class="form-group mb-0">
+        <label for="employee">Funcionário</label>
+        <select name="employee" id="employee" class="form-control">
+          <option value="">Todos</option>
+          {% for emp in employees %}
+            <option value="{{ emp.pk }}" {% if selected_employee.pk == emp.pk %}selected{% endif %}>{{ emp.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group mb-0">
+        <label for="start_date">De</label>
+        <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date|default:'' }}">
+      </div>
+      <div class="form-group mb-0">
+        <label for="end_date">Até</label>
+        <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date|default:'' }}">
+      </div>
+      <div class="form-group mb-0" style="align-self:flex-end;">
+        <button type="submit" class="btn btn--primary">Filtrar</button>
+        {% if selected_employee or start_date or end_date %}
+          <a href="{% url 'presence_history' %}" class="btn btn--outline btn--sm">Limpar</a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if events %}
+<div class="table-responsive">
+  <table class="table table--lg">
+    <thead>
+      <tr>
+        <th>Funcionário</th>
+        <th>Evento</th>
+        <th>Data / Hora</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event in events %}
+      <tr>
+        <td><a href="{% url 'employees:detail' event.employee.pk %}">{{ event.employee.name }}</a></td>
+        <td>
+          {% if event.direction == 'IN' %}
+            <span class="badge badge--success">⬆ ENTRADA</span>
+          {% else %}
+            <span class="badge badge--danger">⬇ SAÍDA</span>
+          {% endif %}
+        </td>
+        <td>{{ event.timestamp|date:"d/m/Y H:i:s" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Nenhum evento registrado{% if selected_employee or start_date or end_date %} para o filtro selecionado{% endif %}.</p>
+</div>
+{% endif %}
+{% endblock %}

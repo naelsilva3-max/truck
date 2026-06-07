@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}{{ action }} Caminhão — Employee & Truck Control{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ action }} Caminhão</h1>
+  <div class="d-flex gap-2">
+    <a href="{% url 'trucks:brands' %}" class="btn btn--outline btn--sm">Gerenciar Marcas/Modelos</a>
+    <a href="{% url 'trucks:list' %}" class="btn btn--secondary">← Voltar</a>
+  </div>
+</div>
+
+<div class="form-card">
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert--danger">
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.license_plate.id_for_label }}" class="form-label">
+          {{ form.license_plate.label }} <span class="required">*</span>
+        </label>
+        {{ form.license_plate }}
+        {% if form.license_plate.errors %}<div class="form-error">{% for e in form.license_plate.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.year.id_for_label }}" class="form-label">{{ form.year.label }}</label>
+        {{ form.year }}
+        {% if form.year.errors %}<div class="form-error">{% for e in form.year.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="id_brand" class="form-label">{{ form.brand.label }} <span class="required">*</span></label>
+        {{ form.brand }}
+        {% if form.brand.errors %}<div class="form-error">{% for e in form.brand.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="id_truck_model" class="form-label">{{ form.truck_model.label }} <span class="required">*</span></label>
+        {{ form.truck_model }}
+        {% if form.truck_model.errors %}<div class="form-error">{% for e in form.truck_model.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.color.id_for_label }}" class="form-label">{{ form.color.label }} <span class="required">*</span></label>
+        {{ form.color }}
+        {% if form.color.errors %}<div class="form-error">{% for e in form.color.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.chassis.id_for_label }}" class="form-label">{{ form.chassis.label }} <span class="required">*</span></label>
+        {{ form.chassis }}
+        <small class="form-help">17 caracteres alfanuméricos (VIN). Máximo: 17.</small>
+        {% if form.chassis.errors %}<div class="form-error">{% for e in form.chassis.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.photo.id_for_label }}" class="form-label">{{ form.photo.label }}</label>
+      {% if form.instance.photo %}
+        <div class="photo-preview">
+          <img src="{{ form.instance.photo.url }}" alt="Foto atual" class="photo-thumb">
+          <small class="form-help">Foto atual. Envie uma nova para substituir.</small>
+        </div>
+      {% endif %}
+      {{ form.photo }}
+      {% if form.photo.errors %}<div class="form-error">{% for e in form.photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
+    </div>
+
+    <div class="form-group form-group--check">
+      <label class="form-check-label">{{ form.is_active }} {{ form.is_active.label }}</label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ action }}</button>
+      <a href="{% url 'trucks:list' %}" class="btn btn--secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  const brandSel = document.getElementById('id_brand');
+  const modelSel = document.getElementById('id_truck_model');
+  const apiBase = '/trucks/api/models/';
+  const currentModel = '{{ form.instance.truck_model_id|default:"" }}';
+
+  function loadModels(brandPk, selectValue) {
+    modelSel.innerHTML = '<option value="">Selecione o modelo</option>';
+    if (!brandPk) return;
+    fetch(apiBase + brandPk + '/')
+      .then(r => r.json())
+      .then(data => {
+        data.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.pk;
+          opt.textContent = m.name;
+          if (String(m.pk) === String(selectValue)) opt.selected = true;
+          modelSel.appendChild(opt);
+        });
+      });
+  }
+
+  brandSel.addEventListener('change', function () {
+    loadModels(this.value, '');
+  });
+
+  // On page load (edit mode): load models for the current brand
+  if (brandSel.value) {
+    loadModels(brandSel.value, currentModel);
+  }
+})();
+</script>
+{% endblock %}

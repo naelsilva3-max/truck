@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} — Employee & Truck Control{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ title }}</h1>
+  <a href="{% url 'employees:list' %}" class="btn btn--secondary">← Voltar</a>
+</div>
+
+<div class="form-card">
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert--danger">
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="form-group">
+      <label for="{{ form.name.id_for_label }}" class="form-label">
+        {{ form.name.label }} <span class="required">*</span>
+      </label>
+      {{ form.name }}
+      {% if form.name.errors %}<div class="form-error">{% for e in form.name.errors %}{{ e }}{% endfor %}</div>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.role.id_for_label }}" class="form-label">
+        {{ form.role.label }} <span class="required">*</span>
+      </label>
+      {{ form.role }}
+      {% if form.role.errors %}<div class="form-error">{% for e in form.role.errors %}{{ e }}{% endfor %}</div>{% endif %}
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.department.id_for_label }}" class="form-label">{{ form.department.label }}</label>
+        {{ form.department }}
+        {% if form.department.errors %}<div class="form-error">{% for e in form.department.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.phone.id_for_label }}" class="form-label">{{ form.phone.label }}</label>
+        {{ form.phone }}
+        {% if form.phone.errors %}<div class="form-error">{% for e in form.phone.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.hire_date.id_for_label }}" class="form-label">
+        {{ form.hire_date.label }} <span class="required">*</span>
+      </label>
+      {{ form.hire_date }}
+      {% if form.hire_date.errors %}<div class="form-error">{% for e in form.hire_date.errors %}{{ e }}{% endfor %}</div>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.photo.id_for_label }}" class="form-label">{{ form.photo.label }}</label>
+      {% if form.instance.photo %}
+        <div class="photo-preview">
+          <img src="{{ form.instance.photo.url }}" alt="Foto atual" class="photo-thumb">
+          <small class="form-help">Foto atual. Envie uma nova para substituir.</small>
+        </div>
+      {% endif %}
+      {{ form.photo }}
+      {% if form.photo.errors %}<div class="form-error">{% for e in form.photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
+    </div>
+
+    <div class="form-row form-checkboxes">
+      <div class="form-group form-group--check">
+        <label class="form-check-label">{{ form.is_driver }} {{ form.is_driver.label }}</label>
+        {% if form.is_driver.errors %}<div class="form-error">{% for e in form.is_driver.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group form-group--check">
+        <label class="form-check-label">{{ form.is_active }} {{ form.is_active.label }}</label>
+        {% if form.is_active.errors %}<div class="form-error">{% for e in form.is_active.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ action }}</button>
+      <a href="{% url 'employees:list' %}" class="btn btn--secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

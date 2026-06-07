@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Excluir Funcionário — Employee & Truck Control{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Excluir Funcionário</h1>
+</div>
+
+<div class="confirm-card confirm-card--danger">
+  <p class="confirm-message">
+    Você tem certeza que deseja excluir o funcionário
+    <strong>{{ object.name }}</strong>?
+  </p>
+
+  {% if has_biometric %}
+    <div class="alert alert--warning">
+      <strong>⚠ Atenção:</strong> Este funcionário possui um template biométrico associado.
+      <ul>
+        <li>Dedo cadastrado: {{ biometric_info.finger_index }}</li>
+        <li>Cadastrado em: {{ biometric_info.enrolled_at }}</li>
+        <li>Última atualização: {{ biometric_info.updated_at }}</li>
+      </ul>
+      O template biométrico também será excluído permanentemente.
+    </div>
+  {% endif %}
+
+  <p class="confirm-warning">
+    Esta ação <strong>não pode ser desfeita</strong>.
+  </p>
+
+  <div class="confirm-actions">
+    <form method="post">
+      {% csrf_token %}
+      <button type="submit" class="btn btn--danger">Confirmar Exclusão</button>
+    </form>
+    <a href="{% url 'employees:detail' object.pk %}" class="btn btn--secondary">Cancelar</a>
+  </div>
+</div>
+{% endblock %}

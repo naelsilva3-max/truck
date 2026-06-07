@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Histórico{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Histórico de Associações Motorista / Caminhão</h1>
+  <a href="{% url 'presence_history' %}" class="btn btn--secondary">Ver Histórico de Saída e Entrada</a>
+</div>
+
+<div class="card mb-3">
+  <form method="get" class="filter-form">
+    <div class="filter-row">
+      <div class="form-group mb-0">
+        <label for="truck">Caminhão</label>
+        <select name="truck" id="truck" class="form-control">
+          <option value="">Todos</option>
+          {% for t in trucks %}
+            <option value="{{ t.pk }}" {% if selected_truck.pk == t.pk %}selected{% endif %}>{{ t.license_plate }} — {{ t.model }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group mb-0">
+        <label for="driver">Motorista</label>
+        <select name="driver" id="driver" class="form-control">
+          <option value="">Todos</option>
+          {% for d in drivers %}
+            <option value="{{ d.pk }}" {% if selected_driver.pk == d.pk %}selected{% endif %}>{{ d.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group mb-0">
+        <label for="start_date">De</label>
+        <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date|default:'' }}">
+      </div>
+      <div class="form-group mb-0">
+        <label for="end_date">Até</label>
+        <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date|default:'' }}">
+      </div>
+      <div class="form-group mb-0" style="align-self:flex-end;">
+        <button type="submit" class="btn btn--primary">Filtrar</button>
+        {% if selected_truck or selected_driver or start_date or end_date %}
+          <a href="{% url 'trucks:global_assignments' %}" class="btn btn--outline btn--sm">Limpar</a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if assignments %}
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Caminhão</th>
+        <th>Motorista</th>
+        <th>Início</th>
+        <th>Fim</th>
+        <th>Status</th>
+        <th>Observações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in assignments %}
+      <tr>
+        <td><a href="{% url 'trucks:detail' a.truck.pk %}">{{ a.truck.license_plate }} — {{ a.truck.model }}</a></td>
+        <td><a href="{% url 'employees:detail' a.driver.pk %}">{{ a.driver.name }}</a></td>
+        <td>{{ a.assigned_at|date:"d/m/Y H:i" }}</td>
+        <td>
+          {% if a.unassigned_at %}
+            {{ a.unassigned_at|date:"d/m/Y H:i" }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>
+          {% if a.unassigned_at %}
+            <span class="badge badge--secondary">Encerrado</span>
+          {% else %}
+            <span class="badge badge--success">Ativo</span>
+          {% endif %}
+        </td>
+        <td class="notes-cell"><textarea class="notes-textarea" readonly>{{ a.notes|default:"" }}</textarea></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Nenhuma associação encontrada{% if selected_truck or selected_driver or start_date or end_date %} para o filtro selecionado{% endif %}.</p>
+</div>
+{% endif %}
+{% endblock %}

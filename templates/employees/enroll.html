@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Cadastro de Biometria — {{ employee.name }} — Employee & Truck Control{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Cadastro de Biometria</h1>
+  <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--secondary">← Voltar para Perfil</a>
+</div>
+
+<div class="detail-card">
+  <dl class="detail-list">
+    <div class="detail-item">
+      <dt>Funcionário</dt>
+      <dd><strong>{{ employee.name }}</strong></dd>
+    </div>
+    <div class="detail-item">
+      <dt>Cargo</dt>
+      <dd>{{ employee.role }}</dd>
+    </div>
+    <div class="detail-item">
+      <dt>Status Biométrico</dt>
+      <dd>
+        {% if has_biometric %}
+          <span class="badge badge--success">✔ Biometria já cadastrada</span>
+        {% else %}
+          <span class="badge badge--warning">✗ Sem biometria cadastrada</span>
+        {% endif %}
+      </dd>
+    </div>
+  </dl>
+</div>
+
+<div class="section-card">
+  <h2>{% if has_biometric %}Recadastrar Biometria{% else %}Cadastrar Biometria{% endif %}</h2>
+
+  <div class="enroll-instructions">
+    <h3>Instruções</h3>
+    <ol>
+      <li>Certifique-se de que o leitor biométrico ZKTeco ZK9500 está <strong>conectado</strong> ao computador.</li>
+      <li>Posicione o dedo indicador direito do funcionário <strong>no centro do leitor</strong>.</li>
+      <li>Mantenha o dedo apoiado com firmeza até que o leitor emita um sinal sonoro.</li>
+      <li>Clique no botão abaixo para iniciar a captura.</li>
+    </ol>
+    {% if has_biometric %}
+      <div class="alert alert--warning">
+        <strong>Atenção:</strong> O template biométrico atual será substituído pelo novo após a captura bem-sucedida.
+      </div>
+    {% endif %}
+  </div>
+
+  <form method="post" class="enroll-form">
+    {% csrf_token %}
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">
+        &#x1F4F7; Iniciar Captura de Biometria
+      </button>
+      <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Registros de Ponto — {{ employee.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Registros de Ponto — {{ employee.name }}</h1>
+  <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--secondary">← Voltar ao funcionário</a>
+</div>
+
+<div class="card mb-3">
+  <form method="get">
+    <div class="d-flex align-center gap-3" style="flex-wrap: wrap;">
+      <div class="form-group mb-0" style="min-width: 180px;">
+        <label for="start_date">Data início</label>
+        <input type="date" id="start_date" name="start_date" class="form-control"
+               value="{{ start_date|default:'' }}">
+      </div>
+      <div class="form-group mb-0" style="min-width: 180px;">
+        <label for="end_date">Data fim</label>
+        <input type="date" id="end_date" name="end_date" class="form-control"
+               value="{{ end_date|default:'' }}">
+      </div>
+      <div class="form-group mb-0" style="align-self: flex-end;">
+        <button type="submit" class="btn btn--primary">Filtrar</button>
+        {% if start_date or end_date %}
+          <a href="{% url 'attendance:list' employee.pk %}" class="btn btn--outline btn--sm">Limpar filtro</a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if records %}
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Entrada</th>
+        <th>Saída</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in records %}
+      <tr>
+        <td>{{ record.date }}</td>
+        <td>{{ record.entry_time|date:"d/m/Y H:i" }}</td>
+        <td>
+          {% if record.exit_time %}
+            {{ record.exit_time|date:"d/m/Y H:i" }}
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card text-center">
+  <p class="text-muted">Nenhum registro de ponto encontrado{% if start_date or end_date %} para o período informado{% endif %}.</p>
+</div>
+{% endif %}
+{% endblock %}

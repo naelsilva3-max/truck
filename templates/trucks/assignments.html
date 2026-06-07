@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Histórico de Associações — {{ truck.license_plate }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Histórico de Associações — {{ truck.license_plate }}</h1>
+  <a href="{% url 'trucks:detail' truck.pk %}" class="btn btn--secondary">← Voltar ao caminhão</a>
+</div>
+
+{% if assignments %}
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Motorista</th>
+        <th>Início</th>
+        <th>Fim</th>
+        <th>Observações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in assignments %}
+      <tr>
+        <td>{{ a.driver.name }}</td>
+        <td>{{ a.assigned_at|date:"d/m/Y H:i" }}</td>
+        <td>
+          {% if a.unassigned_at %}
+            {{ a.unassigned_at|date:"d/m/Y H:i" }}
+          {% else %}
+            <span class="badge badge--info">Ativo</span>
+          {% endif %}
+        </td>
+        <td class="notes-cell"><textarea class="notes-textarea" readonly>{{ a.notes|default:"" }}</textarea></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Nenhuma associação registrada para este caminhão.</p>
+</div>
+{% endif %}
+{% endblock %}
