@@ -15,8 +15,8 @@ from django.views import View
 # ---------------------------------------------------------------------------
 
 def _model_json():
-    """Return a JSON array of all models with pk, name, brand_pk for client-side filtering."""
-    qs = TruckModel.objects.values('pk', 'name', 'brand_pk')
+    """Return a JSON array of all models with pk, name, brand_id for client-side filtering."""
+    qs = TruckModel.objects.values('pk', 'name', 'brand_id')
     return json.dumps(list(qs), cls=DjangoJSONEncoder)
 
 from employees.models import Employee
