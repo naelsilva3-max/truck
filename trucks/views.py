@@ -10,15 +10,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _model_json():
-    """Return a JSON array of all models with pk, name, brand_id for client-side filtering."""
-    qs = TruckModel.objects.values('pk', 'name', 'brand_id')
-    return json.dumps(list(qs), cls=DjangoJSONEncoder)
-
 from employees.models import Employee
 from .forms import TruckAssignmentForm, TruckForm
 from .models import Truck, TruckAssignment, TruckBrand, TruckModel
@@ -110,20 +101,22 @@ class TruckListView(LoginRequiredMixin, View):
 class TruckCreateView(LoginRequiredMixin, View):
     def get(self, request):
         return render(request, 'trucks/form.html', {
-            'form': TruckForm(), 'action': 'Cadastrar', 'model_json': _model_json(),
+            'form': TruckForm(), 'action': 'Cadastrar',
         })
 
     def post(self, request):
         form = TruckForm(request.POST, request.FILES)
         if form.is_valid():
             try:
-                truck = form.save()
+                truck = form.save(commit=False)
+                truck.truck_model = form.cleaned_data['truck_model_obj']
+                truck.save()
                 messages.success(request, f'Caminhão {truck.license_plate} cadastrado com sucesso.')
                 return redirect('trucks:detail', pk=truck.pk)
             except ValidationError as exc:
                 form.add_error(None, exc)
         return render(request, 'trucks/form.html', {
-            'form': form, 'action': 'Cadastrar', 'model_json': _model_json(),
+            'form': form, 'action': 'Cadastrar',
         })
 
 
@@ -145,7 +138,6 @@ class TruckUpdateView(LoginRequiredMixin, View):
             'form': TruckForm(instance=truck),
             'action': 'Salvar',
             'truck': truck,
-            'model_json': _model_json(),
         })
 
     def post(self, request, pk):
@@ -153,13 +145,15 @@ class TruckUpdateView(LoginRequiredMixin, View):
         form = TruckForm(request.POST, request.FILES, instance=truck)
         if form.is_valid():
             try:
-                form.save()
+                truck = form.save(commit=False)
+                truck.truck_model = form.cleaned_data['truck_model_obj']
+                truck.save()
                 messages.success(request, 'Caminhão atualizado com sucesso.')
                 return redirect('trucks:detail', pk=pk)
             except ValidationError as exc:
                 form.add_error(None, exc)
         return render(request, 'trucks/form.html', {
-            'form': form, 'action': 'Salvar', 'truck': truck, 'model_json': _model_json(),
+            'form': form, 'action': 'Salvar', 'truck': truck,
         })
 
 

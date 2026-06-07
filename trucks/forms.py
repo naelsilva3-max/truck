@@ -1,5 +1,3 @@
-import json
-
 from django import forms
 
 from employees.models import Employee
@@ -7,13 +5,20 @@ from .models import Truck, TruckAssignment, TruckBrand, TruckModel
 
 
 class TruckForm(forms.ModelForm):
+    """Custom form that uses a ChoiceField for truck_model to avoid queryset validation issues."""
+
+    truck_model = forms.ChoiceField(
+        label='Modelo',
+        required=True,
+        widget=forms.Select(attrs={'class': 'form-control', 'id': 'id_truck_model'}),
+    )
+
     class Meta:
         model = Truck
         fields = ['license_plate', 'brand', 'truck_model', 'color', 'chassis', 'year', 'is_active', 'photo']
         labels = {
             'license_plate': 'Placa',
             'brand': 'Marca',
-            'truck_model': 'Modelo',
             'color': 'Cor',
             'chassis': 'Chassi',
             'year': 'Ano',
@@ -27,7 +32,6 @@ class TruckForm(forms.ModelForm):
                 'style': 'text-transform:uppercase',
             }),
             'brand': forms.Select(attrs={'class': 'form-control', 'id': 'id_brand'}),
-            'truck_model': forms.Select(attrs={'class': 'form-control', 'id': 'id_truck_model'}),
             'color': forms.Select(attrs={'class': 'form-control'}),
             'chassis': forms.TextInput(attrs={
                 'class': 'form-control',
@@ -45,16 +49,34 @@ class TruckForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['brand'].queryset = TruckBrand.objects.all()
         self.fields['brand'].empty_label = 'Selecione a marca'
-        self.fields['truck_model'].empty_label = 'Selecione o modelo'
-        # Always load ALL models, filtering will be done client-side
-        self.fields['truck_model'].queryset = TruckModel.objects.select_related('brand').all()
+
+        # Build choices for truck_model: (pk, "Brand Name - Model Name")
+        models = TruckModel.objects.select_related('brand').all()
+        choices = [('', 'Selecione o modelo')]
+        for m in models:
+            choices.append((str(m.pk), f'{m.brand.name} - {m.name}'))
+        self.fields['truck_model'].choices = choices
+
+        # Set initial value if editing
+        if self.instance and self.instance.pk and self.instance.truck_model_id:
+            self.initial['truck_model'] = str(self.instance.truck_model_id)
 
     def clean(self):
         cleaned = super().clean()
         brand = cleaned.get('brand')
-        truck_model = cleaned.get('truck_model')
-        if brand and truck_model and truck_model.brand_id != brand.pk:
-            self.add_error('truck_model', 'O modelo selecionado não pertence à marca informada.')
+        truck_model_pk = cleaned.get('truck_model')
+
+        if truck_model_pk:
+            try:
+                truck_model_obj = TruckModel.objects.get(pk=truck_model_pk)
+                cleaned['truck_model_obj'] = truck_model_obj
+                if brand and truck_model_obj.brand_id != brand.pk:
+                    self.add_error('truck_model', 'O modelo selecionado não pertence à marca informada.')
+            except TruckModel.DoesNotExist:
+                self.add_error('truck_model', 'Modelo inválido.')
+        else:
+            self.add_error('truck_model', 'Selecione um modelo.')
+
         return cleaned
 
     def clean_license_plate(self):
