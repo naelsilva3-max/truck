@@ -1,3 +1,5 @@
+import json
+
 from django import forms
 
 from employees.models import Employee
@@ -44,13 +46,8 @@ class TruckForm(forms.ModelForm):
         self.fields['brand'].queryset = TruckBrand.objects.all()
         self.fields['brand'].empty_label = 'Selecione a marca'
         self.fields['truck_model'].empty_label = 'Selecione o modelo'
-        # On edit, limit models to the current brand
-        if self.instance and self.instance.pk and self.instance.brand_id:
-            self.fields['truck_model'].queryset = TruckModel.objects.filter(
-                brand=self.instance.brand
-            )
-        else:
-            self.fields['truck_model'].queryset = TruckModel.objects.none()
+        # Always load ALL models, filtering will be done client-side
+        self.fields['truck_model'].queryset = TruckModel.objects.select_related('brand').all()
 
     def clean(self):
         cleaned = super().clean()

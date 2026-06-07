@@ -4,10 +4,20 @@ import json
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
+from django.core.serializers.json import DjangoJSONEncoder
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _model_json():
+    """Return a JSON array of all models with pk, name, brand_pk for client-side filtering."""
+    qs = TruckModel.objects.values('pk', 'name', 'brand_pk')
+    return json.dumps(list(qs), cls=DjangoJSONEncoder)
 
 from employees.models import Employee
 from .forms import TruckAssignmentForm, TruckForm
@@ -99,7 +109,9 @@ class TruckListView(LoginRequiredMixin, View):
 
 class TruckCreateView(LoginRequiredMixin, View):
     def get(self, request):
-        return render(request, 'trucks/form.html', {'form': TruckForm(), 'action': 'Cadastrar'})
+        return render(request, 'trucks/form.html', {
+            'form': TruckForm(), 'action': 'Cadastrar', 'model_json': _model_json(),
+        })
 
     def post(self, request):
         form = TruckForm(request.POST, request.FILES)
@@ -110,7 +122,9 @@ class TruckCreateView(LoginRequiredMixin, View):
                 return redirect('trucks:detail', pk=truck.pk)
             except ValidationError as exc:
                 form.add_error(None, exc)
-        return render(request, 'trucks/form.html', {'form': form, 'action': 'Cadastrar'})
+        return render(request, 'trucks/form.html', {
+            'form': form, 'action': 'Cadastrar', 'model_json': _model_json(),
+        })
 
 
 class TruckDetailView(LoginRequiredMixin, View):
@@ -131,6 +145,7 @@ class TruckUpdateView(LoginRequiredMixin, View):
             'form': TruckForm(instance=truck),
             'action': 'Salvar',
             'truck': truck,
+            'model_json': _model_json(),
         })
 
     def post(self, request, pk):
@@ -143,7 +158,9 @@ class TruckUpdateView(LoginRequiredMixin, View):
                 return redirect('trucks:detail', pk=pk)
             except ValidationError as exc:
                 form.add_error(None, exc)
-        return render(request, 'trucks/form.html', {'form': form, 'action': 'Salvar', 'truck': truck})
+        return render(request, 'trucks/form.html', {
+            'form': form, 'action': 'Salvar', 'truck': truck, 'model_json': _model_json(),
+        })
 
 
 # ---------------------------------------------------------------------------

@@ -90,30 +90,30 @@
 (function () {
   const brandSel = document.getElementById('id_brand');
   const modelSel = document.getElementById('id_truck_model');
-  const apiBase = '/trucks/api/models/';
   const currentModel = '{{ form.instance.truck_model_id|default:"" }}';
+
+  // JSON data: [{"pk": 1, "name": "Modelo X", "brand_pk": 1}, ...] for client-side filtering
+  var modelData = JSON.parse('{{ model_json|escapejs }}');
 
   function loadModels(brandPk, selectValue) {
     modelSel.innerHTML = '<option value="">Selecione o modelo</option>';
     if (!brandPk) return;
-    fetch(apiBase + brandPk + '/')
-      .then(r => r.json())
-      .then(data => {
-        data.forEach(m => {
-          const opt = document.createElement('option');
-          opt.value = m.pk;
-          opt.textContent = m.name;
-          if (String(m.pk) === String(selectValue)) opt.selected = true;
-          modelSel.appendChild(opt);
-        });
-      });
+    modelData.forEach(function(m) {
+      if (String(m.brand_pk) === String(brandPk)) {
+        const opt = document.createElement('option');
+        opt.value = m.pk;
+        opt.textContent = m.name;
+        if (String(m.pk) === String(selectValue)) opt.selected = true;
+        modelSel.appendChild(opt);
+      }
+    });
   }
 
   brandSel.addEventListener('change', function () {
     loadModels(this.value, '');
   });
 
-  // On page load (edit mode): load models for the current brand
+  // On page load: filter models for the current brand
   if (brandSel.value) {
     loadModels(brandSel.value, currentModel);
   }
