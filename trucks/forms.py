@@ -7,7 +7,8 @@ from .models import Truck, TruckAssignment, TruckBrand, TruckModel
 class TruckForm(forms.ModelForm):
     """Custom form that uses a ChoiceField for truck_model to avoid validation issues."""
 
-    truck_model = forms.ChoiceField(
+    truck_model = forms.ModelChoiceField(
+        queryset=TruckModel.objects.all(),
         label='Modelo',
         required=True,
         widget=forms.Select(attrs={'class': 'form-control', 'id': 'id_truck_model'}),
@@ -15,10 +16,11 @@ class TruckForm(forms.ModelForm):
 
     class Meta:
         model = Truck
-        fields = ['license_plate', 'brand', 'color', 'chassis', 'year', 'is_active', 'photo']
+        fields = ['license_plate', 'brand', 'truck_model', 'color', 'chassis', 'year', 'is_active', 'photo']
         labels = {
             'license_plate': 'Placa',
             'brand': 'Marca',
+            'truck_model': 'Modelo',
             'color': 'Cor',
             'chassis': 'Chassi',
             'year': 'Ano',
@@ -50,49 +52,27 @@ class TruckForm(forms.ModelForm):
         self.fields['brand'].queryset = TruckBrand.objects.all()
         self.fields['brand'].empty_label = 'Selecione a marca'
 
-        # Build choices for truck_model: (pk, "Brand Name - Model Name")
-        models = TruckModel.objects.select_related('brand').all().order_by('brand__name', 'name')
-        choices = [('', 'Selecione o modelo')]
-        for m in models:
-            choices.append((str(m.pk), f'{m.brand.name} - {m.name}'))
-        self.fields['truck_model'].choices = choices
-
-        # Set initial value if editing
-        if self.instance and self.instance.pk and self.instance.truck_model_id:
-            self.initial['truck_model'] = str(self.instance.truck_model_id)
+        self.fields['truck_model'].queryset = TruckModel.objects.select_related('brand').all().order_by('brand__name', 'name')
+        self.fields['truck_model'].empty_label = 'Selecione o modelo'
+        self.fields['truck_model'].label_from_instance = lambda obj: f'{obj.brand.name} - {obj.name}'
 
     def clean(self):
         cleaned = super().clean()
         brand = cleaned.get('brand')
-        truck_model_pk = cleaned.get('truck_model')
+        truck_model = cleaned.get('truck_model')
 
-        if truck_model_pk:
-            try:
-                truck_model_obj = TruckModel.objects.get(pk=truck_model_pk)
-                cleaned['truck_model_obj'] = truck_model_obj
-                if brand and truck_model_obj.brand_id != brand.pk:
-                    self.add_error('truck_model', 'O modelo selecionado não pertence à marca informada.')
-            except TruckModel.DoesNotExist:
-                self.add_error('truck_model', 'Modelo inválido.')
-        else:
-            self.add_error('truck_model', 'Selecione um modelo.')
+        if truck_model and brand and truck_model.brand_id != brand.pk:
+            self.add_error('truck_model', 'O modelo selecionado não pertence à marca informada.')
 
         return cleaned
 
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        # Set truck_model from the cleaned TruckModel object
-        instance.truck_model = self.cleaned_data.get('truck_model_obj')
-        if commit:
-            instance.full_clean()
-            instance.save()
-        return instance
-
     def clean_license_plate(self):
-        return self.cleaned_data['license_plate'].upper()
+        plate = self.cleaned_data.get('license_plate')
+        return plate.upper() if plate else plate
 
     def clean_chassis(self):
-        return self.cleaned_data['chassis'].upper()
+        chassis = self.cleaned_data.get('chassis')
+        return chassis.upper() if chassis else chassis
 
 
 class TruckAssignmentForm(forms.ModelForm):
