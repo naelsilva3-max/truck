@@ -108,9 +108,7 @@ class TruckCreateView(LoginRequiredMixin, View):
         form = TruckForm(request.POST, request.FILES)
         if form.is_valid():
             try:
-                truck = form.save(commit=False)
-                truck.truck_model = form.cleaned_data['truck_model_obj']
-                truck.save()
+                truck = form.save()
                 messages.success(request, f'Caminhão {truck.license_plate} cadastrado com sucesso.')
                 return redirect('trucks:detail', pk=truck.pk)
             except ValidationError as exc:
@@ -145,9 +143,7 @@ class TruckUpdateView(LoginRequiredMixin, View):
         form = TruckForm(request.POST, request.FILES, instance=truck)
         if form.is_valid():
             try:
-                truck = form.save(commit=False)
-                truck.truck_model = form.cleaned_data['truck_model_obj']
-                truck.save()
+                form.save()
                 messages.success(request, 'Caminhão atualizado com sucesso.')
                 return redirect('trucks:detail', pk=pk)
             except ValidationError as exc:

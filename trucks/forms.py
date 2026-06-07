@@ -5,7 +5,7 @@ from .models import Truck, TruckAssignment, TruckBrand, TruckModel
 
 
 class TruckForm(forms.ModelForm):
-    """Custom form that uses a ChoiceField for truck_model to avoid queryset validation issues."""
+    """Custom form that uses a ChoiceField for truck_model to avoid validation issues."""
 
     truck_model = forms.ChoiceField(
         label='Modelo',
@@ -15,7 +15,7 @@ class TruckForm(forms.ModelForm):
 
     class Meta:
         model = Truck
-        fields = ['license_plate', 'brand', 'truck_model', 'color', 'chassis', 'year', 'is_active', 'photo']
+        fields = ['license_plate', 'brand', 'color', 'chassis', 'year', 'is_active', 'photo']
         labels = {
             'license_plate': 'Placa',
             'brand': 'Marca',
@@ -51,7 +51,7 @@ class TruckForm(forms.ModelForm):
         self.fields['brand'].empty_label = 'Selecione a marca'
 
         # Build choices for truck_model: (pk, "Brand Name - Model Name")
-        models = TruckModel.objects.select_related('brand').all()
+        models = TruckModel.objects.select_related('brand').all().order_by('brand__name', 'name')
         choices = [('', 'Selecione o modelo')]
         for m in models:
             choices.append((str(m.pk), f'{m.brand.name} - {m.name}'))
@@ -78,6 +78,15 @@ class TruckForm(forms.ModelForm):
             self.add_error('truck_model', 'Selecione um modelo.')
 
         return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        # Set truck_model from the cleaned TruckModel object
+        instance.truck_model = self.cleaned_data.get('truck_model_obj')
+        if commit:
+            instance.full_clean()
+            instance.save()
+        return instance
 
     def clean_license_plate(self):
         return self.cleaned_data['license_plate'].upper()
