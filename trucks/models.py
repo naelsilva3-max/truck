@@ -68,15 +68,15 @@ class Truck(models.Model):
         TruckBrand,
         on_delete=models.PROTECT,
         related_name='trucks',
-        verbose_name='Marca',
-        null=True, blank=True,
+        verbose_name='Marca', # truck_model will set this
+        null=True, blank=True, # Can be null if truck_model is not set, but truck_model is now mandatory
     )
     truck_model = models.ForeignKey(
         TruckModel,
         on_delete=models.PROTECT,
         related_name='trucks',
         verbose_name='Modelo',
-        null=True, blank=True,
+        null=False, blank=False, # Changed to mandatory as per form and design intent
     )
     # Legacy free-text model kept for display/PDF — auto-populated from truck_model
     model = models.CharField(max_length=100, verbose_name='Modelo (texto)', editable=False, default='')
@@ -109,9 +109,6 @@ class Truck(models.Model):
         if self.truck_model and self.brand and self.truck_model.brand_id != self.brand_id:
             raise ValidationError({'truck_model': 'O modelo selecionado não pertence à marca informada.'})
 
-        if not self.truck_model and not self.model.strip():
-            raise ValidationError({'truck_model': 'Selecione um modelo.'})
-
         if self.chassis:
             chassis = self.chassis.upper()
             if not CHASSIS_RE.match(chassis):
@@ -137,6 +134,23 @@ class Truck(models.Model):
         raise PermissionError('Physical deletion of Truck is not allowed; use is_active=False instead.')
 
 
+class TruckPhoto(models.Model):
+    truck = models.ForeignKey(Truck, on_delete=models.CASCADE, related_name='photos')
+    image = models.ImageField(upload_to='trucks/photos/')
+    order = models.PositiveSmallIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'uploaded_at']
+
+    def __str__(self):
+        return f'Foto {self.order} — {self.truck.license_plate}'
+
+    def delete(self, *args, **kwargs):
+        self.image.delete(save=False)
+        super().delete(*args, **kwargs)
+
+
 class TruckAssignment(models.Model):
     truck = models.ForeignKey(Truck, on_delete=models.PROTECT, related_name='assignments')
     driver = models.ForeignKey(Employee, on_delete=models.PROTECT, related_name='truck_assignments')
@@ -156,18 +170,8 @@ class TruckAssignment(models.Model):
     def clean(self):
         if self.driver_id and not self.driver.is_driver:
             raise ValidationError({'driver': 'O funcionário selecionado não é motorista.'})
+        if self.truck_id and not self.truck.is_active:
+            raise ValidationError({'truck': 'Não é possível associar motoristas a um caminhão inativo.'})
+        # Validate that unassigned_at is not before assigned_at
         if self.unassigned_at and self.assigned_at and self.unassigned_at < self.assigned_at:
-            raise ValidationError({'unassigned_at': 'A data de encerramento não pode ser anterior à data de associação.'})
-
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        if self.unassigned_at is None:
-            qs = TruckAssignment.objects.filter(truck=self.truck, unassigned_at__isnull=True)
-            if self.pk:
-                qs = qs.exclude(pk=self.pk)
-            if qs.exists():
-                raise ValidationError({'truck': 'Este caminhão já possui um motorista ativo.'})
-        super().save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        raise PermissionError('Physical deletion of TruckAssignment is not allowed; use unassigned_at instead.')
+            raise ValidationError({'unassigned_at': 'A data de desassociação não pode ser anterior à data de associação.'})

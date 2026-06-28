@@ -1,88 +1,109 @@
 {% extends "base.html" %}
-
-{% block title %}Marcas e Modelos — Employee & Truck Control{% endblock %}
+{% block title %}Marcas e Modelos{% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h1>Marcas e Modelos de Caminhões</h1>
+  <h1>Marcas e Modelos</h1>
   <a href="{% url 'trucks:list' %}" class="btn btn--secondary">← Voltar</a>
 </div>
 
-<div class="form-row" style="align-items:flex-start; gap:1.5rem;">
+<div class="brands-page-layout">
 
-  {# Add brand #}
-  <div class="card" style="flex:1; min-width:240px;">
-    <h2>Nova Marca</h2>
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="add_brand">
-      <div class="form-group">
-        <label class="form-label">Nome da Marca</label>
-        <input type="text" name="brand_name" class="form-control" placeholder="Ex: Volvo" required>
-      </div>
-      <button type="submit" class="btn btn--primary btn--full">Adicionar Marca</button>
-    </form>
-  </div>
-
-  {# Add model #}
-  <div class="card" style="flex:1; min-width:240px;">
-    <h2>Novo Modelo</h2>
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="add_model">
-      <div class="form-group">
-        <label class="form-label">Marca</label>
-        <select name="brand_pk" class="form-control" required>
-          <option value="">Selecione</option>
-          {% for brand in brands %}
-            <option value="{{ brand.pk }}">{{ brand.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nome do Modelo</label>
-        <input type="text" name="model_name" class="form-control" placeholder="Ex: FH 460" required>
-      </div>
-      <button type="submit" class="btn btn--primary btn--full">Adicionar Modelo</button>
-    </form>
-  </div>
-</div>
-
-<div class="card mt-3">
-  <h2>Marcas Cadastradas</h2>
-  {% if brands %}
-  {% for brand in brands %}
-  <div class="brand-section">
-    <div class="brand-header">
-      <strong>{{ brand.name }}</strong>
-      <form method="post" style="display:inline;" onsubmit="return confirm('Remover marca {{ brand.name }}?')">
+  <!-- Coluna esquerda: formulários fixos -->
+  <div class="brands-forms">
+    <div class="card">
+      <h2 class="card-title">➕ Nova Marca</h2>
+      <form method="post">
         {% csrf_token %}
-        <input type="hidden" name="action" value="delete_brand">
-        <input type="hidden" name="brand_pk" value="{{ brand.pk }}">
-        <button type="submit" class="btn btn--sm btn--danger">Remover</button>
+        <input type="hidden" name="action" value="add_brand">
+        <div class="form-group">
+          <label class="form-label">Nome da Marca</label>
+          <input type="text" name="brand_name" class="form-control" placeholder="Ex: Volvo" required>
+        </div>
+        <button type="submit" class="btn btn--primary btn--full">Adicionar Marca</button>
       </form>
     </div>
-    {% if brand.models.all %}
-    <div class="model-list">
-      {% for m in brand.models.all %}
-      <div class="model-item">
-        <span>{{ m.name }}</span>
-        <form method="post" style="display:inline;" onsubmit="return confirm('Remover modelo {{ m.name }}?')">
-          {% csrf_token %}
-          <input type="hidden" name="action" value="delete_model">
-          <input type="hidden" name="model_pk" value="{{ m.pk }}">
-          <button type="submit" class="btn btn--sm btn--danger">✕</button>
-        </form>
-      </div>
-      {% endfor %}
+
+    <div class="card">
+      <h2 class="card-title">➕ Novo Modelo</h2>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_model">
+        <div class="form-group">
+          <label class="form-label">Marca</label>
+          <select name="brand_pk" class="form-control" required>
+            <option value="">Selecione a marca</option>
+            {% for brand in brands %}
+              <option value="{{ brand.pk }}">{{ brand.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nome do Modelo</label>
+          <input type="text" name="model_name" class="form-control" placeholder="Ex: FH 460" required>
+        </div>
+        <button type="submit" class="btn btn--primary btn--full">Adicionar Modelo</button>
+      </form>
     </div>
-    {% else %}
-    <p class="text-muted" style="font-size:.85rem; margin:.25rem 0 .5rem 1rem;">Sem modelos cadastrados.</p>
-    {% endif %}
   </div>
-  {% endfor %}
-  {% else %}
-  <div class="empty-state"><p>Nenhuma marca cadastrada ainda.</p></div>
-  {% endif %}
+
+  <!-- Coluna direita: tabela com scroll -->
+  <div class="card" style="padding:0; overflow:hidden; align-self:start;">
+    <div class="brands-scroll-header">
+      <span>Marcas cadastradas</span>
+      <span class="badge badge--secondary">{{ brands|length }} marca{{ brands|length|pluralize:"s" }}</span>
+    </div>
+    <div class="brands-scroll-box">
+      {% if brands %}
+        <table class="brands-table">
+          <thead>
+            <tr>
+              <th style="width:160px;">Marca</th>
+              <th>Modelos</th>
+              <th style="width:90px;text-align:center;">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for brand in brands %}
+            <tr>
+              <td>
+                <strong>{{ brand.name }}</strong>
+                <span class="badge badge--secondary" style="margin-left:.35rem;">{{ brand.models.count }}</span>
+              </td>
+              <td>
+                <div class="model-grid" style="padding:0;">
+                  {% for m in brand.models.all %}
+                  <div class="model-tag">
+                    <span>{{ m.name }}</span>
+                    <form method="post" style="display:inline;" onsubmit="return confirm('Remover o modelo {{ m.name }}?')">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="delete_model">
+                      <input type="hidden" name="model_pk" value="{{ m.pk }}">
+                      <button type="submit" class="model-tag-remove" title="Remover">✕</button>
+                    </form>
+                  </div>
+                  {% empty %}
+                  <span class="text-muted" style="font-size:.82rem;">Sem modelos</span>
+                  {% endfor %}
+                </div>
+              </td>
+              <td style="text-align:center;">
+                <form method="post" onsubmit="return confirm('Remover a marca {{ brand.name }}?')">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_brand">
+                  <input type="hidden" name="brand_pk" value="{{ brand.pk }}">
+                  <button type="submit" class="btn btn--sm btn--danger">Remover</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty-state" style="padding:2rem;"><p>Nenhuma marca cadastrada ainda.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
 </div>
 {% endblock %}

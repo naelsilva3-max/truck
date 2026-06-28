@@ -29,10 +29,11 @@
       {% for truck, driver in trucks_with_driver %}
       <tr>
         <td class="photo-cell">
+          {% load static %}
           {% if truck.photo %}
             <img src="{{ truck.photo.url }}" alt="{{ truck.license_plate }}" class="photo-thumb photo-thumb--list">
           {% else %}
-            <div class="photo-placeholder photo-placeholder--list">🚚</div>
+            <img src="{% static 'images/truck_placeholder.png' %}" alt="sem foto" class="photo-thumb photo-thumb--list">
           {% endif %}
         </td>
         <td><a href="{% url 'trucks:detail' truck.pk %}">{{ truck.license_plate }}</a></td>

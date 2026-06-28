@@ -23,6 +23,7 @@ class EmployeeForm(forms.ModelForm):
             "is_driver",
             "is_active",
             "photo",
+            "document_photo",
         ]
         widgets = {
             "name": forms.TextInput(
@@ -44,6 +45,7 @@ class EmployeeForm(forms.ModelForm):
             "is_driver": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "photo": forms.ClearableFileInput(attrs={"class": "form-control", "accept": "image/*"}),
+            "document_photo": forms.ClearableFileInput(attrs={"class": "form-control", "accept": "image/*"}),
         }
         help_texts = {
             "name": "Nome completo do funcionário. Não pode ser vazio.",
@@ -53,6 +55,7 @@ class EmployeeForm(forms.ModelForm):
             "hire_date": "Data de admissão. Não pode ser uma data futura.",
             "is_driver": "Marque se o funcionário está habilitado a conduzir caminhões.",
             "is_active": "Desmarque para desativar o funcionário (soft-delete).",
+            "document_photo": "Imagem do documento de identificação (RG, CNH, etc.).",
         }
         labels = {
             "name": "Nome",
@@ -63,6 +66,7 @@ class EmployeeForm(forms.ModelForm):
             "is_driver": "É Motorista?",
             "is_active": "Ativo?",
             "photo": "Foto",
+            "document_photo": "Foto do Documento",
         }
 
     def __init__(self, *args, **kwargs):

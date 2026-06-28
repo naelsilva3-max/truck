@@ -46,7 +46,14 @@ class AttendanceService:
             return PresenceEvent.OUT, None
         return last.direction, last.timestamp
 
+    def _check_active(self, employee_id: int) -> None:
+        from employees.models import Employee
+        emp = Employee.objects.get(pk=employee_id)
+        if not emp.is_active:
+            raise ValueError(f'Funcionário {emp.name} está inativo e não pode ter entrada/saída registrada.')
+
     def record_entry(self, employee_id: int) -> AttendanceRecord:
+        self._check_active(employee_id)
         now = timezone.now()
         record = AttendanceRecord(employee_id=employee_id, entry_time=now, date=now.date())
         record.save()
@@ -60,6 +67,7 @@ class AttendanceService:
         return record
 
     def record_exit(self, employee_id: int) -> AttendanceRecord:
+        self._check_active(employee_id)
         record = self.get_open_record(employee_id)
         if record is None:
             raise ValueError(f"No open attendance record found for employee {employee_id}.")

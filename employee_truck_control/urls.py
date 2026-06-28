@@ -9,12 +9,14 @@ from attendance.views import PresenceHistoryView
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
+    path("accounts/", include("accounts.urls")),
     path("employees/", include("employees.urls")),
     path("employees/", include("attendance.urls")),
     # Global presence history (not employee-scoped)
     path("attendance/presence/", PresenceHistoryView.as_view(), name="presence_history"),
     path("trucks/", include("trucks.urls")),
     path("biometric/", include("biometric.urls")),
+    path("visitors/", include("visitors.urls")),
     # Redirect root to employee list
     path("", lambda request: redirect("employees:list"), name="root"),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Histórico do Sistema{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Histórico do Sistema</h1>
+  <small style="color:#888;">Registro imutável</small>
+</div>
+
+<div class="card" style="margin-bottom:1.25rem;">
+  <form method="get" class="filter-row">
+    <div class="form-group">
+      <label class="form-label">Ação</label>
+      <select name="action" class="form-control">
+        <option value="">Todas</option>
+        <option value="login"    {% if request.GET.action == 'login'    %}selected{% endif %}>Login</option>
+        <option value="logout"   {% if request.GET.action == 'logout'   %}selected{% endif %}>Logout</option>
+        <option value="create"   {% if request.GET.action == 'create'   %}selected{% endif %}>Criação</option>
+        <option value="update"   {% if request.GET.action == 'update'   %}selected{% endif %}>Atualização</option>
+        <option value="delete"   {% if request.GET.action == 'delete'   %}selected{% endif %}>Exclusão</option>
+        <option value="pdf"      {% if request.GET.action == 'pdf'      %}selected{% endif %}>PDF</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Usuário</label>
+      <input type="text" name="user" class="form-control" placeholder="Nome do usuário" value="{{ request.GET.user }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">De</label>
+      <input type="date" name="start_date" class="form-control" value="{{ request.GET.start_date }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Até</label>
+      <input type="date" name="end_date" class="form-control" value="{{ request.GET.end_date }}">
+    </div>
+    <div class="form-group" style="align-self:flex-end;">
+      <button type="submit" class="btn btn--primary">Filtrar</button>
+      <a href="{% url 'accounts:system_logs' %}" class="btn btn--secondary">Limpar</a>
+    </div>
+  </form>
+</div>
+
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Data/Hora</th>
+        <th>Usuário</th>
+        <th>Ação</th>
+        <th>Descrição</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td style="white-space:nowrap;">{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
+        <td>{{ log.username }}</td>
+        <td>
+          {% if log.action == 'create' %}
+            <span class="badge badge--success">Criação</span>
+          {% elif log.action == 'update' %}
+            <span class="badge badge--info">Atualização</span>
+          {% elif log.action == 'delete' %}
+            <span class="badge badge--danger">Exclusão</span>
+          {% elif log.action == 'pdf' %}
+            <span class="badge badge--secondary">PDF</span>
+          {% elif log.action == 'login' %}
+            <span class="badge badge--warning">Login</span>
+          {% elif log.action == 'logout' %}
+            <span class="badge badge--secondary">Logout</span>
+          {% else %}
+            <span class="badge badge--secondary">{{ log.get_action_display }}</span>
+          {% endif %}
+        </td>
+        <td>{{ log.description }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="text-muted" style="text-align:center;padding:2rem;">Nenhum registro encontrado.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

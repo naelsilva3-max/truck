@@ -1,22 +1,41 @@
 {% extends "base.html" %}
-
-{% block title %}{{ truck.license_plate }} — Employee & Truck Control{% endblock %}
+{% block title %}{{ truck.license_plate }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <h1>{{ truck.license_plate }} — {{ truck.model }}</h1>
   <div>
+    {% if can_edit %}
     <a href="{% url 'trucks:update' truck.pk %}" class="btn btn--primary">Editar</a>
+    {% endif %}
     <a href="{% url 'trucks:list' %}" class="btn btn--secondary">← Voltar</a>
   </div>
 </div>
 
+{% load static %}
+<!-- Galeria de fotos -->
+{% if photos %}
 <div class="card mb-3">
-  {% if truck.photo %}
-  <div class="photo-header">
-    <img src="{{ truck.photo.url }}" alt="{{ truck.license_plate }}" class="photo-thumb photo-thumb--lg">
+  <div class="truck-gallery">
+    {% for photo in photos %}
+    <img src="{{ photo.image.url }}" alt="Foto {{ forloop.counter }}" class="truck-gallery-img" onclick="openLightbox(this.src)">
+    {% endfor %}
   </div>
-  {% endif %}
+</div>
+{% else %}
+<div class="card mb-3">
+  <div class="truck-gallery">
+    <img src="{% static 'images/truck_placeholder.png' %}" alt="Sem foto" class="truck-gallery-img">
+  </div>
+</div>
+{% endif %}
+
+<!-- Lightbox simples -->
+<div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" style="max-width:90vw;max-height:90vh;border-radius:4px;">
+</div>
+
+<div class="card mb-3">
   <dl class="detail-list">
     <dt>Modelo</dt><dd>{{ truck.model }}</dd>
     <dt>Cor</dt><dd>{{ truck.get_color_display }}</dd>
@@ -37,12 +56,16 @@
   <h2>Motorista Atual</h2>
   {% if current_driver %}
     <p><span class="badge badge--info">{{ current_driver.name }}</span></p>
+    {% if can_edit %}
     <form method="post" action="{% url 'trucks:unassign' truck.pk %}" style="display:inline;">
       {% csrf_token %}
       <button type="submit" class="btn btn--danger">Desassociar Motorista</button>
     </form>
+    {% endif %}
   {% else %}
     <p class="text-muted">Nenhum motorista associado.</p>
+    {% if can_edit %}
+    {% if truck.is_active %}
     <form method="post" action="{% url 'trucks:assign' truck.pk %}">
       {% csrf_token %}
       {% if assign_form.non_field_errors %}
@@ -63,6 +86,12 @@
       </div>
       <button type="submit" class="btn btn--primary">Associar Motorista</button>
     </form>
+    {% else %}
+    <p class="text-muted"><em>Caminhão inativo — associação desabilitada.</em></p>
+    {% endif %}
+    {% else %}
+    <p class="text-muted"><em>Sem permissão para associar motoristas.</em></p>
+    {% endif %}
   {% endif %}
 </div>
 
@@ -91,4 +120,14 @@
   <p class="text-muted">Sem histórico de associações.</p>
   {% endif %}
 </div>
+
+<script>
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').style.display = 'flex';
+}
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+}
+</script>
 {% endblock %}

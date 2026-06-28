@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Funcionários — Employee & Truck Control{% endblock %}
+{% block title %}Funcionários{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -13,7 +13,9 @@
         <a href="{% url 'employees:list' %}?show_inactive=1" class="btn btn--outline">Mostrar inativos ({{ inactive_count }})</a>
       {% endif %}
     {% endif %}
+    {% if can_edit %}
     <a href="{% url 'employees:create' %}" class="btn btn--primary">+ Novo Funcionário</a>
+    {% endif %}
   </div>
 </div>
 
@@ -35,11 +37,8 @@
       {% for employee in employees %}
       <tr{% if not employee.is_active %} class="row-inactive"{% endif %}>
         <td class="photo-cell">
-          {% if employee.photo %}
-            <img src="{{ employee.photo.url }}" alt="{{ employee.name }}" class="photo-thumb photo-thumb--list">
-          {% else %}
-            <div class="photo-placeholder photo-placeholder--list">{{ employee.name|slice:":1"|upper }}</div>
-          {% endif %}
+          {% load static %}
+          <img src="{% if employee.photo %}{{ employee.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ employee.name }}" class="photo-thumb photo-thumb--list">
         </td>
         <td><a href="{% url 'employees:detail' employee.pk %}">{{ employee.name }}</a></td>
         <td>{{ employee.role }}</td>
@@ -60,7 +59,9 @@
         </td>
         <td class="table-actions">
           <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--sm btn--secondary">Ver</a>
+          {% if can_edit %}
           <a href="{% url 'employees:update' employee.pk %}" class="btn btn--sm btn--primary">Editar</a>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

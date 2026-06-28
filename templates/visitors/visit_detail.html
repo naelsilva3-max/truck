@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Detalhes da Visita{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Detalhes da Visita</h1>
+  <div class="d-flex gap-2">
+    <a href="{% url 'visitors:visit_list' %}" class="btn btn--outline">← Voltar</a>
+    <a href="{% url 'visitors:visit_badge' visit.pk %}" class="btn btn--primary" target="_blank">Crachá PDF</a>
+    {% if visit.is_active and can_edit %}
+    <form method="post" action="{% url 'visitors:visit_depart' visit.pk %}" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit" class="btn btn--danger">Registrar Saída</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <h2>Informações da Visita</h2>
+    <table class="table detail-table">
+      <tr>
+        <th>Foto</th>
+        <td>
+          {% load static %}
+          <img src="{% if visit.visitor.photo %}{{ visit.visitor.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ visit.visitor.name }}" class="photo-thumb" style="max-width: 100px;">
+        </td>
+      </tr>
+      <tr>
+        <th>Visitante</th>
+        <td>{{ visit.visitor.name }}</td>
+      </tr>
+      {% if visit.visitor.company %}
+      <tr>
+        <th>Empresa</th>
+        <td>{{ visit.visitor.company }}</td>
+      </tr>
+      {% endif %}
+      {% if visit.visitor.phone %}
+      <tr>
+        <th>Telefone</th>
+        <td>{{ visit.visitor.phone }}</td>
+      </tr>
+      {% endif %}
+      <tr>
+        <th>Documento</th>
+        <td>
+          {% if visit.visitor.document_photo %}
+            <img src="{{ visit.visitor.document_photo.url }}" alt="Documento" class="photo-thumb" style="max-width: 200px;">
+            <br>
+            <small>Foto do documento</small>
+          {% else %}
+            <span class="badge badge--secondary">Sem foto do documento</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Data da Visita</th>
+        <td>{{ visit.visit_date|date:"d/m/Y" }}</td>
+      </tr>
+      <tr>
+        <th>Hora de Chegada</th>
+        <td>{{ visit.arrival_time|time:"H:i" }}</td>
+      </tr>
+      <tr>
+        <th>Hora de Partida (Prevista)</th>
+        <td>{{ visit.scheduled_departure_time|time:"H:i" }}</td>
+      </tr>
+      <tr>
+        <th>Hora Real da Partida</th>
+        <td>
+          {% if visit.actual_departure_time %}
+            {{ visit.actual_departure_time|time:"H:i" }}
+          {% else %}
+            <span class="badge badge--warning">Ainda em visita</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Identificação Verificada</th>
+        <td>
+          {% if visit.id_verified %}
+            <span class="badge badge--success">✓ Verificada</span>
+          {% else %}
+            <span class="badge badge--danger">✗ Não verificada</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Responsável</th>
+        <td>{{ visit.responsible.name }}</td>
+      </tr>
+      {% if visit.notes %}
+      <tr>
+        <th>Observações</th>
+        <td>{{ visit.notes }}</td>
+      </tr>
+      {% endif %}
+      <tr>
+        <th>Status</th>
+        <td>
+          {% if visit.is_active %}
+            <span class="badge badge--success">Em visita</span>
+          {% else %}
+            <span class="badge badge--secondary">Finalizada</span>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </div>
+</div>
+{% endblock %}

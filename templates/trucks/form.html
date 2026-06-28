@@ -1,6 +1,5 @@
 {% extends "base.html" %}
-
-{% block title %}{{ action }} Caminhão — Employee & Truck Control{% endblock %}
+{% block title %}{{ action }} Caminhão{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -12,7 +11,7 @@
 </div>
 
 <div class="form-card">
-  <form method="post" enctype="multipart/form-data" novalidate>
+  <form method="post" enctype="multipart/form-data" novalidate id="truck-form">
     {% csrf_token %}
 
     {% if form.non_field_errors %}
@@ -23,9 +22,7 @@
 
     <div class="form-row">
       <div class="form-group">
-        <label for="{{ form.license_plate.id_for_label }}" class="form-label">
-          {{ form.license_plate.label }} <span class="required">*</span>
-        </label>
+        <label for="{{ form.license_plate.id_for_label }}" class="form-label">{{ form.license_plate.label }} <span class="required">*</span></label>
         {{ form.license_plate }}
         {% if form.license_plate.errors %}<div class="form-error">{% for e in form.license_plate.errors %}{{ e }}{% endfor %}</div>{% endif %}
       </div>
@@ -44,7 +41,12 @@
       </div>
       <div class="form-group">
         <label for="id_truck_model" class="form-label">{{ form.truck_model.label }} <span class="required">*</span></label>
-        {{ form.truck_model }}
+        <select name="truck_model" id="id_truck_model" class="form-control">
+          <option value="">{% if form.instance.truck_model %}{{ form.instance.truck_model }}{% else %}Selecione a marca primeiro{% endif %}</option>
+          {% if form.instance.truck_model %}
+          <option value="{{ form.instance.truck_model.pk }}" selected>{{ form.instance.truck_model }}</option>
+          {% endif %}
+        </select>
         {% if form.truck_model.errors %}<div class="form-error">{% for e in form.truck_model.errors %}{{ e }}{% endfor %}</div>{% endif %}
       </div>
     </div>
@@ -58,25 +60,49 @@
       <div class="form-group">
         <label for="{{ form.chassis.id_for_label }}" class="form-label">{{ form.chassis.label }} <span class="required">*</span></label>
         {{ form.chassis }}
-        <small class="form-help">17 caracteres alfanuméricos (VIN). Máximo: 17.</small>
+        <small class="form-help">17 caracteres alfanuméricos (VIN).</small>
         {% if form.chassis.errors %}<div class="form-error">{% for e in form.chassis.errors %}{{ e }}{% endfor %}</div>{% endif %}
       </div>
     </div>
 
-    <div class="form-group">
-      <label for="{{ form.photo.id_for_label }}" class="form-label">{{ form.photo.label }}</label>
-      {% if form.instance.photo %}
-        <div class="photo-preview">
-          <img src="{{ form.instance.photo.url }}" alt="Foto atual" class="photo-thumb">
-          <small class="form-help">Foto atual. Envie uma nova para substituir.</small>
-        </div>
-      {% endif %}
-      {{ form.photo }}
-      {% if form.photo.errors %}<div class="form-error">{% for e in form.photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
-    </div>
-
     <div class="form-group form-group--check">
       <label class="form-check-label">{{ form.is_active }} {{ form.is_active.label }}</label>
+    </div>
+
+    <!-- Fotos existentes (edição) -->
+    {% if existing_photos %}
+    <div class="form-group">
+      <label class="form-label">Fotos atuais <small class="form-help" style="display:inline;">(marque para remover)</small></label>
+      <div class="photo-upload-grid" id="existing-grid">
+        {% for photo in existing_photos %}
+        <div class="photo-upload-item" id="existing-{{ photo.pk }}">
+          <img src="{{ photo.image.url }}" alt="Foto {{ forloop.counter }}">
+          <label class="photo-remove-label">
+            <input type="checkbox" name="delete_photos" value="{{ photo.pk }}" class="photo-delete-cb" onchange="updateDeleteVisual(this)">
+            <span class="photo-remove-icon">✕ Remover</span>
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Upload de novas fotos -->
+    <div class="form-group">
+      <label class="form-label">
+        {% if existing_photos %}Adicionar fotos{% else %}Fotos <span class="required">*</span>{% endif %}
+        <small class="form-help" style="display:inline;">Mínimo {{ min_photos }}, máximo {{ max_photos }} no total.</small>
+      </label>
+      <div class="photo-dropzone" id="dropzone" onclick="document.getElementById('photo-input').click()">
+        <div class="photo-dropzone-inner">
+          <span class="photo-dropzone-icon">📷</span>
+          <span class="photo-dropzone-text">Clique ou arraste fotos aqui</span>
+          <span class="photo-dropzone-hint">JPG, PNG, WEBP — múltiplas permitidas</span>
+        </div>
+        <input type="file" id="photo-input" name="photos" multiple accept="image/*" style="display:none;" onchange="handlePhotoSelect(this)">
+      </div>
+      <div class="photo-upload-grid" id="new-photos-grid"></div>
+      <div id="photo-count-msg" class="form-help" style="margin-top:.4rem;"></div>
     </div>
 
     <div class="form-actions">
@@ -86,8 +112,111 @@
   </form>
 </div>
 
-{% comment %}
-  No JS needed. All models are loaded directly from the form queryset.
-  The backend validates model selection properly.
-{% endcomment %}
+<script>
+const MIN_PHOTOS = {{ min_photos }};
+const MAX_PHOTOS = {{ max_photos }};
+let selectedFiles = [];
+
+// --- Filtro marca → modelo ---
+const brandSelect = document.getElementById('id_brand');
+const modelSelect = document.getElementById('id_truck_model');
+const preselectedModel = {{ form.instance.truck_model.pk|default:'null' }};
+
+function loadModels(brandPk, selectPk) {
+  if (!brandPk) {
+    modelSelect.innerHTML = '<option value="">Selecione a marca primeiro</option>';
+    return;
+  }
+  fetch(`/trucks/api/models/${brandPk}/`)
+    .then(r => r.json())
+    .then(models => {
+      modelSelect.innerHTML = '<option value="">Selecione o modelo</option>';
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.pk;
+        opt.textContent = m.name;
+        if (m.pk === selectPk) opt.selected = true;
+        modelSelect.appendChild(opt);
+      });
+    });
+}
+
+brandSelect.addEventListener('change', () => loadModels(brandSelect.value, null));
+
+// Na edição, carregar modelos da marca já selecionada
+if (brandSelect.value) loadModels(brandSelect.value, preselectedModel);
+
+
+function handlePhotoSelect(input) {
+  const newFiles = Array.from(input.files);
+  selectedFiles = [...selectedFiles, ...newFiles];
+  rebuildFileInput();
+  renderNewPreviews();
+  updateCount();
+}
+
+function rebuildFileInput() {
+  const input = document.getElementById('photo-input');
+  const dt = new DataTransfer();
+  selectedFiles.forEach(f => dt.items.add(f));
+  input.files = dt.files;
+}
+
+function renderNewPreviews() {
+  const grid = document.getElementById('new-photos-grid');
+  grid.innerHTML = '';
+  selectedFiles.forEach((file, idx) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const item = document.createElement('div');
+      item.className = 'photo-upload-item';
+      item.innerHTML = `
+        <img src="${e.target.result}" alt="${file.name}">
+        <button type="button" class="photo-remove-btn" onclick="removeNewPhoto(${idx})">✕</button>
+        <span class="photo-upload-name">${file.name}</span>`;
+      grid.appendChild(item);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removeNewPhoto(idx) {
+  selectedFiles.splice(idx, 1);
+  rebuildFileInput();
+  renderNewPreviews();
+  updateCount();
+}
+
+function updateDeleteVisual(cb) {
+  const item = document.getElementById('existing-' + cb.value.split('_').pop()) ||
+               cb.closest('.photo-upload-item');
+  if (item) item.classList.toggle('photo-marked-delete', cb.checked);
+  updateCount();
+}
+
+function updateCount() {
+  const existingTotal = document.querySelectorAll('.photo-delete-cb').length;
+  const markedDelete = document.querySelectorAll('.photo-delete-cb:checked').length;
+  const remaining = existingTotal - markedDelete + selectedFiles.length;
+  const msg = document.getElementById('photo-count-msg');
+  msg.textContent = `Total após salvar: ${remaining} foto(s). Mínimo: ${MIN_PHOTOS}, máximo: ${MAX_PHOTOS}.`;
+  msg.style.color = (remaining < MIN_PHOTOS || remaining > MAX_PHOTOS) ? 'var(--color-error)' : 'var(--color-muted)';
+}
+
+// Drag and drop
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('dragover');
+  const newFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+  selectedFiles = [...selectedFiles, ...newFiles];
+  rebuildFileInput();
+  renderNewPreviews();
+  updateCount();
+});
+
+updateCount();
+</script>
 {% endblock %}

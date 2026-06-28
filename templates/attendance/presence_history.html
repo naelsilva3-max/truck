@@ -1,65 +1,96 @@
 {% extends "base.html" %}
 
-{% block title %}Histórico{% endblock %}
+{% block title %}Registro de Entrada e Saída{% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h1>Histórico de Saída / Entrada</h1>
-    <a href="{% url 'trucks:global_assignments' %}" class="btn btn--secondary">Ver Associação de Caminhões</a>
+  <h1>Registro de Entrada e Saída</h1>
+  <div class="d-flex gap-2">
+    <a href="{% url 'presence_history' %}?type=all{% if selected_employee %}&employee={{ selected_employee.pk }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" class="btn btn--sm {% if filter_type == 'all' %}btn--primary{% else %}btn--outline{% endif %}">Todos</a>
+    <a href="{% url 'presence_history' %}?type=employees{% if selected_employee %}&employee={{ selected_employee.pk }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" class="btn btn--sm {% if filter_type == 'employees' %}btn--primary{% else %}btn--outline{% endif %}">Funcionários</a>
+    <a href="{% url 'presence_history' %}?type=visitors{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" class="btn btn--sm {% if filter_type == 'visitors' %}btn--primary{% else %}btn--outline{% endif %}">Visitantes</a>
+  </div>
 </div>
 
-<div class="card mb-3">
-  <form method="get" class="filter-form">
-    <div class="filter-row">
-      <div class="form-group mb-0">
-        <label for="employee">Funcionário</label>
-        <select name="employee" id="employee" class="form-control">
-          <option value="">Todos</option>
-          {% for emp in employees %}
-            <option value="{{ emp.pk }}" {% if selected_employee.pk == emp.pk %}selected{% endif %}>{{ emp.name }}</option>
-          {% endfor %}
-        </select>
+<div class="card">
+  <div class="card-body">
+    <form method="get" class="form form--inline">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="employee">Funcionário</label>
+          <select name="employee" id="employee" class="form-control">
+            <option value="">Todos</option>
+            {% for emp in employees %}
+              <option value="{{ emp.pk }}" {% if selected_employee and selected_employee.pk == emp.pk %}selected{% endif %}>{{ emp.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="start_date">Data Início</label>
+          <input type="date" name="start_date" id="start_date" class="form-control" value="{{ start_date|date:'Y-m-d'|default:'' }}">
+        </div>
+        <div class="form-group">
+          <label for="end_date">Data Fim</label>
+          <input type="date" name="end_date" id="end_date" class="form-control" value="{{ end_date|date:'Y-m-d'|default:'' }}">
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+          <input type="hidden" name="type" value="{{ filter_type }}">
+          <button type="submit" class="btn btn--primary">Filtrar</button>
+        </div>
       </div>
-      <div class="form-group mb-0">
-        <label for="start_date">De</label>
-        <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date|default:'' }}">
-      </div>
-      <div class="form-group mb-0">
-        <label for="end_date">Até</label>
-        <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date|default:'' }}">
-      </div>
-      <div class="form-group mb-0" style="align-self:flex-end;">
-        <button type="submit" class="btn btn--primary">Filtrar</button>
-        {% if selected_employee or start_date or end_date %}
-          <a href="{% url 'presence_history' %}" class="btn btn--outline btn--sm">Limpar</a>
-        {% endif %}
-      </div>
-    </div>
-  </form>
+    </form>
+  </div>
 </div>
 
 {% if events %}
 <div class="table-responsive">
-  <table class="table table--lg">
+  <table class="table">
     <thead>
       <tr>
-        <th>Funcionário</th>
-        <th>Evento</th>
-        <th>Data / Hora</th>
+        <th>Tipo</th>
+        <th>Nome</th>
+        <th>Data/Hora</th>
+        <th>Direção</th>
+        <th>Detalhes</th>
       </tr>
     </thead>
     <tbody>
       {% for event in events %}
       <tr>
-        <td><a href="{% url 'employees:detail' event.employee.pk %}">{{ event.employee.name }}</a></td>
         <td>
-          {% if event.direction == 'IN' %}
-            <span class="badge badge--success">⬆ ENTRADA</span>
+          {% if event.type == 'employee' %}
+            <span class="badge badge--info">Funcionário</span>
           {% else %}
-            <span class="badge badge--danger">⬇ SAÍDA</span>
+            <span class="badge badge--secondary">Visitante</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if event.type == 'employee' %}
+            <a href="{% url 'employees:detail' event.employee.pk %}">{{ event.employee_name }}</a>
+          {% else %}
+            {{ event.visitor_name }}
+            {% if event.company %}
+              <br><small>{{ event.company }}</small>
+            {% endif %}
           {% endif %}
         </td>
         <td>{{ event.timestamp|date:"d/m/Y H:i:s" }}</td>
+        <td>
+          {% if event.direction == 'IN' or event.direction == 'Entrada' %}
+            <span class="badge badge--success">Entrada</span>
+          {% else %}
+            <span class="badge badge--danger">Saída</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if event.type == 'employee' %}
+            {% if event.attendance_record %}
+              <span class="badge badge--info">Ponto</span>
+            {% endif %}
+          {% else %}
+            <a href="{% url 'visitors:visit_detail' event.visit_pk %}" class="btn btn--sm btn--secondary">Ver Visita</a>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -67,7 +98,7 @@
 </div>
 {% else %}
 <div class="empty-state">
-  <p>Nenhum evento registrado{% if selected_employee or start_date or end_date %} para o filtro selecionado{% endif %}.</p>
+  <p>Nenhum registro encontrado.</p>
 </div>
 {% endif %}
 {% endblock %}

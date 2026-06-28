@@ -7,6 +7,12 @@ PostgreSQL-ready: set DATABASE_URL or override the DATABASES dict via environmen
 
 from pathlib import Path
 import os
+try:
+    from dotenv import load_dotenv
+    # Explicitly find the .env file relative to BASE_DIR
+    load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / '.env')
+except ImportError:
+    pass
 
 # ---------------------------------------------------------------------------
 # Base directory
@@ -28,6 +34,10 @@ ALLOWED_HOSTS = os.environ.get(
     "127.0.0.1 localhost naelsilva.pythonanywhere.com",
 ).split()
 
+# Permite acesso por qualquer IP da rede local em modo de desenvolvimento
+if DEBUG:
+    ALLOWED_HOSTS += ['*']
+
 # ---------------------------------------------------------------------------
 # Application definition
 # ---------------------------------------------------------------------------
@@ -45,6 +55,8 @@ INSTALLED_APPS = [
     "trucks",
     "attendance",
     "biometric",
+    "accounts",
+    "visitors",
 ]
 
 MIDDLEWARE = [
@@ -73,6 +85,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "accounts.context_processors.user_role",
             ],
         },
     },
@@ -94,6 +107,20 @@ if _db_engine == "postgresql":
             "PASSWORD": os.environ.get("DB_PASSWORD", ""),
             "HOST": os.environ.get("DB_HOST", "localhost"),
             "PORT": os.environ.get("DB_PORT", "5432"),
+        }
+    }
+elif _db_engine == "mysql":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": os.environ.get("DB_NAME", "employee_truck_control"),
+            "USER": os.environ.get("DB_USER", "root"),
+            "PASSWORD": os.environ.get("DB_PASSWORD", "Nael@252525"),
+            "HOST": os.environ.get("DB_HOST", "localhost"),
+            "PORT": os.environ.get("DB_PORT", "3306"),
+            "OPTIONS": {
+                'charset': 'utf8mb4',
+            },
         }
     }
 else:
@@ -173,12 +200,7 @@ LOGGING = {
     "loggers": {
         "biometric": {
             "handlers": ["console"],
-            "level": "DEBUG",
-            "propagate": False,
-        },
-        "attendance": {
-            "handlers": ["console"],
-            "level": "DEBUG",
+            "level": "INFO",
             "propagate": False,
         },
     },

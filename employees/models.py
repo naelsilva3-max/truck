@@ -12,6 +12,12 @@ class Employee(models.Model):
     is_driver = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     photo = models.ImageField(upload_to='employees/photos/', null=True, blank=True)
+    document_photo = models.ImageField(
+        upload_to='employees/documents/',
+        null=True, blank=True,
+        verbose_name='Foto do Documento',
+        help_text='Imagem do documento de identificação do funcionário (RG, CNH, etc.).',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

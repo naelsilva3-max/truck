@@ -12,11 +12,10 @@
 </div>
 
 <div class="detail-card">
-  {% if employee.photo %}
   <div class="photo-header">
-    <img src="{{ employee.photo.url }}" alt="{{ employee.name }}" class="photo-thumb photo-thumb--lg">
+    {% load static %}
+    <img src="{% if employee.photo %}{{ employee.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ employee.name }}" class="emp-photo" onclick="openLightbox(this.src)" style="cursor:zoom-in;">
   </div>
-  {% endif %}
 
   {# ---- Status de presença ---- #}
   <div class="presence-status mb-3">
@@ -58,6 +57,14 @@
         {% endif %}
       </dd>
     </div>
+    {% if employee.document_photo %}
+    <div class="detail-item">
+      <dt>Foto do Documento</dt>
+      <dd>
+        <img src="{{ employee.document_photo.url }}" alt="Documento de {{ employee.name }}" class="photo-thumb" style="max-width: 200px; cursor: zoom-in;" onclick="openLightbox(this.src)">
+      </dd>
+    </div>
+    {% endif %}
     <div class="detail-item"><dt>Cadastrado em</dt><dd>{{ employee.created_at|date:"d/m/Y H:i" }}</dd></div>
     <div class="detail-item"><dt>Atualizado em</dt><dd>{{ employee.updated_at|date:"d/m/Y H:i" }}</dd></div>
   </dl>
@@ -98,3 +105,16 @@
   {% endif %}
 </div>
 {% endblock %}
+
+<div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" style="max-width:90vw;max-height:90vh;border-radius:4px;">
+</div>
+<script>
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').style.display = 'flex';
+}
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+}
+</script>

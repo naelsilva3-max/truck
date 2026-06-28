@@ -1,7 +1,7 @@
 from django import forms
 
 from employees.models import Employee
-from .models import Truck, TruckAssignment, TruckBrand, TruckModel
+from .models import Truck, TruckAssignment, TruckBrand, TruckModel, TruckPhoto
 
 
 class TruckForm(forms.ModelForm):
@@ -16,7 +16,7 @@ class TruckForm(forms.ModelForm):
 
     class Meta:
         model = Truck
-        fields = ['license_plate', 'brand', 'truck_model', 'color', 'chassis', 'year', 'is_active', 'photo']
+        fields = ['license_plate', 'brand', 'truck_model', 'color', 'chassis', 'year', 'is_active']
         labels = {
             'license_plate': 'Placa',
             'brand': 'Marca',
@@ -25,7 +25,6 @@ class TruckForm(forms.ModelForm):
             'chassis': 'Chassi',
             'year': 'Ano',
             'is_active': 'Ativo?',
-            'photo': 'Foto',
         }
         widgets = {
             'license_plate': forms.TextInput(attrs={
@@ -44,7 +43,6 @@ class TruckForm(forms.ModelForm):
             }),
             'year': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Ex: 2022'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'photo': forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
         }
 
     def __init__(self, *args, **kwargs):
