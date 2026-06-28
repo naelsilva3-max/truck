@@ -3,19 +3,60 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Employee & Truck Control{% endblock %}</title>
+  <title>{% block title %}Controle de Transporte{% endblock %}</title>
   {% load static %}
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <style>
+    /* Ajustes de Responsividade */
+    @media (max-width: 768px) {
+      .navbar {
+        flex-wrap: wrap;
+        justify-content: space-between;
+      }
+      .navbar-toggle {
+        display: block !important;
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: inherit;
+      }
+      .navbar-menu {
+        display: none; /* Esconde o menu por padrão no mobile */
+        flex-direction: column;
+        width: 100%;
+        gap: 10px;
+        padding: 1rem 0;
+        text-align: center;
+      }
+      .navbar-menu.active {
+        display: flex; /* Mostra o menu quando ativo */
+      }
+      .navbar-user {
+        margin: 10px 0;
+        display: block;
+      }
+      .form-row {
+        flex-direction: column;
+      }
+    }
+    .navbar-toggle {
+      display: none;
+    }
+  </style>
 </head>
 <body>
   <nav class="navbar">
     <div class="navbar-brand">
       <a href="/">
         <img src="{% static 'images/logo.png' %}" alt="Logomarca" class="navbar-logo">
-        Employee & Truck Control
+        Controle de Transporte
       </a>
     </div>
-    <div class="navbar-menu">
+    
+    <button class="navbar-toggle" onclick="document.getElementById('navbarMenu').classList.toggle('active')">☰</button>
+
+    <div class="navbar-menu" id="navbarMenu">
       {% if user.is_authenticated %}
         <a href="{% url 'employees:list' %}">Funcionários</a>
         <a href="{% url 'trucks:list' %}">Caminhões</a>
