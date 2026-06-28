@@ -25,7 +25,7 @@
         <th>Foto</th>
         <td>
           {% load static %}
-          <img src="{% if visit.visitor.photo %}{{ visit.visitor.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ visit.visitor.name }}" class="photo-thumb" style="max-width: 100px;">
+          <img src="{% if visit.visitor.photo %}{{ visit.visitor.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ visit.visitor.name }}" class="photo-thumb" style="max-width: 100px; cursor: pointer;" onclick="openModal(this.src)" title="Clique para ampliar">
         </td>
       </tr>
       <tr>
@@ -48,9 +48,9 @@
         <th>Documento</th>
         <td>
           {% if visit.visitor.document_photo %}
-            <img src="{{ visit.visitor.document_photo.url }}" alt="Documento" class="photo-thumb" style="max-width: 200px;">
+            <img src="{{ visit.visitor.document_photo.url }}" alt="Documento" class="photo-thumb" style="max-width: 200px; cursor: pointer;" onclick="openModal(this.src)" title="Clique para ampliar">
             <br>
-            <small>Foto do documento</small>
+            <small>Clique na imagem para ampliar</small>
           {% else %}
             <span class="badge badge--secondary">Sem foto do documento</span>
           {% endif %}
@@ -111,4 +111,286 @@
     </table>
   </div>
 </div>
+
+<!-- Modal de visualização ampliada com zoom -->
+<div id="imageModal" class="modal">
+  <span class="modal-close" onclick="closeModal()">&times;</span>
+  <div class="modal-image-wrapper">
+    <img class="modal-content" id="modalImage">
+  </div>
+  <div class="modal-controls">
+    <button class="zoom-btn" onclick="zoomIn()" title="Aumentar zoom">➕</button>
+    <span class="zoom-level" id="zoomLevel">100%</span>
+    <button class="zoom-btn" onclick="zoomOut()" title="Diminuir zoom">➖</button>
+    <button class="zoom-btn" onclick="resetZoom()" title="Redefinir zoom">⟲</button>
+  </div>
+  <div class="modal-caption" id="modalCaption">Use o scroll do mouse ou os botões para dar zoom. Clique e arraste para mover.</div>
+</div>
+
+<style>
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+}
+.modal-image-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.modal-content {
+  display: block;
+  max-width: 90%;
+  max-height: 90%;
+  transition: transform 0.1s ease;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.modal-content:active {
+  cursor: grabbing;
+}
+.modal-close {
+  position: absolute;
+  top: 15px;
+  right: 35px;
+  color: #fff;
+  font-size: 40px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 1002;
+  line-height: 1;
+}
+.modal-close:hover {
+  color: #ccc;
+}
+.modal-controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(0,0,0,0.6);
+  padding: 8px 16px;
+  border-radius: 30px;
+  z-index: 1002;
+}
+.zoom-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: #fff;
+  font-size: 18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.zoom-btn:hover {
+  background: rgba(255,255,255,0.3);
+}
+.zoom-level {
+  color: #fff;
+  font-size: 14px;
+  min-width: 45px;
+  text-align: center;
+  font-family: sans-serif;
+}
+.modal-caption {
+  position: fixed;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #aaa;
+  font-size: 13px;
+  text-align: center;
+  z-index: 1002;
+  background: rgba(0,0,0,0.5);
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-family: sans-serif;
+}
+</style>
+
+<script>
+let currentZoom = 1;
+let panX = 0;
+let panY = 0;
+let isDragging = false;
+let startX = 0;
+let startY = 0;
+
+const modal = document.getElementById('imageModal');
+const img = document.getElementById('modalImage');
+
+function openModal(src) {
+  img.src = src;
+  resetZoom();
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function applyTransform() {
+  img.style.transform = `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px)) scale(${currentZoom})`;
+  img.style.left = '50%';
+  img.style.top = '50%';
+  img.style.position = 'absolute';
+  img.style.maxWidth = 'none';
+  img.style.maxHeight = 'none';
+  document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
+}
+
+function zoomIn() {
+  currentZoom = Math.min(currentZoom * 1.5, 10);
+  applyTransform();
+}
+
+function zoomOut() {
+  currentZoom = Math.max(currentZoom / 1.5, 0.5);
+  applyTransform();
+}
+
+function resetZoom() {
+  currentZoom = 1;
+  panX = 0;
+  panY = 0;
+  img.style.maxWidth = '90%';
+  img.style.maxHeight = '90%';
+  img.style.position = '';
+  img.style.left = '';
+  img.style.top = '';
+  img.style.transform = '';
+  document.getElementById('zoomLevel').textContent = '100%';
+}
+
+// Clique na imagem alterna entre zoom 2x e 1x
+img.addEventListener('click', function(e) {
+  e.stopPropagation();
+  if (currentZoom === 1) {
+    zoomIn();
+    zoomIn(); // vai para ~2.25x
+  } else {
+    resetZoom();
+  }
+});
+
+// Duplo clique sempre dá zoom in
+img.addEventListener('dblclick', function(e) {
+  e.preventDefault();
+  zoomIn();
+});
+
+// Scroll zoom (com suavização)
+img.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  if (e.deltaY < 0) {
+    currentZoom = Math.min(currentZoom * 1.15, 10);
+  } else {
+    currentZoom = Math.max(currentZoom / 1.15, 0.5);
+  }
+  applyTransform();
+});
+
+// Mouse drag to pan
+img.addEventListener('mousedown', function(e) {
+  if (currentZoom > 1) {
+    isDragging = true;
+    startX = e.clientX - panX;
+    startY = e.clientY - panY;
+    img.style.cursor = 'grabbing';
+  }
+});
+
+document.addEventListener('mouseup', function() {
+  if (isDragging) {
+    isDragging = false;
+    img.style.cursor = 'grab';
+  }
+});
+
+document.addEventListener('mousemove', function(e) {
+  if (isDragging && currentZoom > 1) {
+    panX = e.clientX - startX;
+    panY = e.clientY - startY;
+    applyTransform();
+  }
+});
+
+// Fechar ao clicar no fundo (fora da imagem)
+modal.addEventListener('click', function(e) {
+  if (e.target === modal || e.target.classList.contains('modal-image-wrapper')) {
+    closeModal();
+  }
+});
+
+// Touch support for mobile (pinch zoom + pan)
+let lastTouchDist = 0;
+let touchStartX = 0;
+let touchStartY = 0;
+
+img.addEventListener('touchstart', function(e) {
+  if (e.touches.length === 2) {
+    lastTouchDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+  } else if (e.touches.length === 1) {
+    touchStartX = e.touches[0].clientX - panX;
+    touchStartY = e.touches[0].clientY - panY;
+  }
+});
+
+img.addEventListener('touchmove', function(e) {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    const dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    if (lastTouchDist > 0) {
+      const scale = dist / lastTouchDist;
+      currentZoom = Math.min(Math.max(currentZoom * scale, 0.5), 10);
+      applyTransform();
+    }
+    lastTouchDist = dist;
+  } else if (e.touches.length === 1 && currentZoom > 1) {
+    panX = e.touches[0].clientX - touchStartX;
+    panY = e.touches[0].clientY - touchStartY;
+    applyTransform();
+  }
+});
+
+img.addEventListener('touchend', function() {
+  lastTouchDist = 0;
+});
+
+// Keyboard
+document.addEventListener('keydown', function(e) {
+  if (modal.style.display === 'block') {
+    if (e.key === 'Escape') closeModal();
+    if (e.key === '+' || e.key === '=') zoomIn();
+    if (e.key === '-') zoomOut();
+    if (e.key === '0') resetZoom();
+  }
+});
+</script>
 {% endblock %}

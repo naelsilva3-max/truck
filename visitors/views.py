@@ -289,7 +289,7 @@ class VisitBadgePDFView(LoginRequiredMixin, View):
         c.drawCentredString(x_center, company_y, company_text)
 
         # ---- Section 5: Barcode-like pattern ----
-        barcode_y = company_y - 10 * mm
+        barcode_y = company_y - 14 * mm
         barcode_height = 10 * mm
         barcode_width = w * 0.7
         barcode_x = x_center - barcode_width / 2
