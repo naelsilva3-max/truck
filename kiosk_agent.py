@@ -137,7 +137,40 @@ class TemplateCache:
             return list(self._templates)
 
 
+def _acquire_singleton_lock() -> None:
+    """
+    Ensure only one `listen` process drives the reader on this machine.
+
+    Windows Task Scheduler (and some shell backgrounding mechanisms) can end
+    up with two OS processes for what looks like a single launch; if both
+    reach the hardware, they race for the same physical device and produce
+    duplicate/garbled attendance reads. A named mutex is visible across the
+    whole session regardless of process lineage, so the second process
+    always loses the race and exits before touching the reader.
+    """
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    ERROR_ALREADY_EXISTS = 183
+    handle = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\ZK9500KioskAgentListen")
+    if not handle:
+        raise ctypes.WinError()
+    if ctypes.GetLastError() == ERROR_ALREADY_EXISTS:
+        logger.error(
+            "Outra instância de 'kiosk_agent.py listen' já está em execução nesta "
+            "máquina; encerrando esta para evitar leituras duplicadas do leitor."
+        )
+        sys.exit(1)
+    # Keep a module-level reference so the mutex handle (and thus the lock)
+    # stays alive for the lifetime of the process instead of being released
+    # as soon as this function returns.
+    global _singleton_mutex_handle
+    _singleton_mutex_handle = handle
+
+
 def cmd_listen(args: argparse.Namespace) -> None:
+    _acquire_singleton_lock()
     service = BiometricService()
     try:
         service.connect(device_id=DEVICE_ID)
