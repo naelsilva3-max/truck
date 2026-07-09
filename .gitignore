@@ -25,6 +25,7 @@ staticfiles/
 .vscode/
 .idea/
 .continue/
+.claude/
 *.swp
 *.swo
 *~

@@ -47,6 +47,9 @@ ALLOWED_HOSTS = os.environ.get(
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = not DEBUG
+# Trust the X-Forwarded-Proto header set by the Nginx reverse proxy so Django
+# knows the original request was HTTPS (otherwise SECURE_SSL_REDIRECT loops).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG

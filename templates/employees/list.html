@@ -25,8 +25,8 @@
   <div class="employees-main-col">
     <form method="get" action="{% url 'employees:list' %}" class="search-bar mb-3">
       {% if show_inactive %}<input type="hidden" name="show_inactive" value="1">{% endif %}
-      <button type="submit" class="btn btn--primary">Buscar</button>
       <input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Buscar por nome, cargo, departamento, telefone, RG, CPF, endereço, CEP...">
+      <button type="submit" class="btn btn--primary">Buscar</button>
       {% if query %}
       <a href="{% url 'employees:list' %}{% if show_inactive %}?show_inactive=1{% endif %}" class="btn btn--outline">Limpar</a>
       {% endif %}
