@@ -372,6 +372,18 @@ class BiometricService:
                     "BiometricDeviceNotFoundError for all hardware operations."
                 )
                 self._backend = UnavailableBackend()
+            except Exception:
+                # pyzkfp is installed but failed to initialize — e.g. pythonnet
+                # can't find a .NET/mono runtime, which always happens on a
+                # Linux server with no reader attached. Degrade the same way
+                # as a missing import instead of letting the view 500.
+                logger.warning(
+                    "pyzkfp failed to initialize (no compatible .NET/mono runtime on "
+                    "this host).  BiometricService will raise BiometricDeviceNotFoundError "
+                    "for all hardware operations.",
+                    exc_info=True,
+                )
+                self._backend = UnavailableBackend()
 
         self._min_score = min_score
 
