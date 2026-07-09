@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ title }}{% endblock %}
 
@@ -8,7 +9,7 @@
   <a href="{% url 'employees:list' %}" class="btn btn--secondary">← Voltar</a>
 </div>
 
-<div class="form-card">
+<div class="form-card form-card--wide">
   <form method="post" enctype="multipart/form-data" novalidate>
     {% csrf_token %}
 
@@ -47,6 +48,49 @@
       </div>
     </div>
 
+    <div class="form-row" id="identity-br-fields">
+      <div class="form-group">
+        <label for="{{ form.rg.id_for_label }}" class="form-label">{{ form.rg.label }}</label>
+        {{ form.rg }}
+        {% if form.rg.errors %}<div class="form-error">{% for e in form.rg.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.cpf.id_for_label }}" class="form-label">{{ form.cpf.label }}</label>
+        {{ form.cpf }}
+        {% if form.cpf.errors %}<div class="form-error">{% for e in form.cpf.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-group form-group--check">
+      <label class="form-check-label">{{ form.is_foreigner }} {{ form.is_foreigner.label }}</label>
+    </div>
+
+    <div class="form-row" id="identity-foreign-fields">
+      <div class="form-group">
+        <label for="{{ form.foreign_document_type.id_for_label }}" class="form-label">{{ form.foreign_document_type.label }}</label>
+        {{ form.foreign_document_type }}
+        {% if form.foreign_document_type.errors %}<div class="form-error">{% for e in form.foreign_document_type.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.foreign_document_number.id_for_label }}" class="form-label">{{ form.foreign_document_number.label }}</label>
+        {{ form.foreign_document_number }}
+        {% if form.foreign_document_number.errors %}<div class="form-error">{% for e in form.foreign_document_number.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.address.id_for_label }}" class="form-label">{{ form.address.label }}</label>
+        {{ form.address }}
+        {% if form.address.errors %}<div class="form-error">{% for e in form.address.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.cep.id_for_label }}" class="form-label">{{ form.cep.label }}</label>
+        {{ form.cep }}
+        {% if form.cep.errors %}<div class="form-error">{% for e in form.cep.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
     <div class="form-group">
       <label for="{{ form.hire_date.id_for_label }}" class="form-label">
         {{ form.hire_date.label }} <span class="required">*</span>
@@ -55,62 +99,63 @@
       {% if form.hire_date.errors %}<div class="form-error">{% for e in form.hire_date.errors %}{{ e }}{% endfor %}</div>{% endif %}
     </div>
 
-    <!-- Foto -->
-    <div class="form-group">
-      <label class="form-label">{{ form.photo.label }}</label>
-      {# Input real escondido — acionado pelo dropzone via JS #}
-      <div style="display:none;">{{ form.photo }}</div>
-
-      <div class="photo-dropzone" id="emp-dropzone">
-        <div class="photo-dropzone-inner">
-          <span class="photo-dropzone-icon">&#128247;</span>
-          <span class="photo-dropzone-text" id="dz-text">
-            {% if form.instance.photo %}Clique para trocar a foto{% else %}Clique ou arraste uma foto aqui{% endif %}
-          </span>
-          <span class="photo-dropzone-hint">JPG, PNG, WEBP</span>
+    <div class="form-row">
+      {# ---- Foto ---- #}
+      <div class="form-group">
+        <label class="form-label">{{ form.photo.label }}</label>
+        <div class="camera-capture" data-facing="user">
+          <div class="camera-viewport">
+            <div class="camera-placeholder">Câmera desligada</div>
+            <video class="camera-video" autoplay playsinline muted></video>
+            <img class="camera-snapshot" alt="Foto capturada">
+          </div>
+          <canvas class="camera-canvas" hidden></canvas>
+          <div class="camera-actions">
+            <button type="button" class="btn btn--sm btn--secondary camera-btn-file">Enviar Arquivo</button>
+            <button type="button" class="btn btn--sm btn--secondary camera-btn-start">Ligar Câmera</button>
+            <button type="button" class="btn btn--sm btn--primary camera-btn-capture">Capturar Foto</button>
+            <button type="button" class="btn btn--sm btn--outline camera-btn-retake">Trocar Foto</button>
+          </div>
+          <p class="camera-error form-error"></p>
+          {{ form.photo }}
         </div>
-      </div>
-
-      <div class="photo-upload-grid" id="emp-preview-grid">
+        {% if form.photo.errors %}<div class="form-error">{% for e in form.photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
         {% if form.instance.photo %}
-        <div class="photo-upload-item" id="emp-current-item">
-          <img src="{{ form.instance.photo.url }}" alt="Foto atual">
-          <button type="button" class="photo-remove-btn" onclick="clearEmpPhoto()">&#10005;</button>
-          <span class="photo-upload-name">Foto atual</span>
-        </div>
+          <div class="mt-2">
+            <img src="{{ form.instance.photo.url }}" alt="Foto atual" class="photo-thumb photo-thumb--150">
+            <p class="form-text">Foto atual (envie um arquivo ou capture uma nova para substituir)</p>
+          </div>
         {% endif %}
       </div>
 
-      {% if form.photo.errors %}<div class="form-error">{% for e in form.photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
-    </div>
-
-    <!-- Foto do Documento -->
-    <div class="form-group">
-      <label class="form-label">{{ form.document_photo.label }}</label>
-      <div style="display:none;">{{ form.document_photo }}</div>
-
-      <div class="photo-dropzone" id="emp-doc-dropzone">
-        <div class="photo-dropzone-inner">
-          <span class="photo-dropzone-icon">&#128196;</span>
-          <span class="photo-dropzone-text" id="dz-doc-text">
-            {% if form.instance.document_photo %}Clique para trocar{% else %}Clique ou arraste a foto do documento aqui{% endif %}
-          </span>
-          <span class="photo-dropzone-hint">JPG, PNG, WEBP</span>
+      {# ---- Foto do Documento ---- #}
+      <div class="form-group">
+        <label class="form-label">{{ form.document_photo.label }}</label>
+        <div class="camera-capture" data-facing="environment">
+          <div class="camera-viewport">
+            <div class="camera-placeholder">Câmera desligada</div>
+            <video class="camera-video" autoplay playsinline muted></video>
+            <img class="camera-snapshot" alt="Documento capturado">
+          </div>
+          <canvas class="camera-canvas" hidden></canvas>
+          <div class="camera-actions">
+            <button type="button" class="btn btn--sm btn--secondary camera-btn-file">Enviar Arquivo</button>
+            <button type="button" class="btn btn--sm btn--secondary camera-btn-start">Ligar Câmera</button>
+            <button type="button" class="btn btn--sm btn--primary camera-btn-capture">Capturar Foto</button>
+            <button type="button" class="btn btn--sm btn--outline camera-btn-retake">Trocar Foto</button>
+          </div>
+          <p class="camera-error form-error"></p>
+          {{ form.document_photo }}
         </div>
-      </div>
-
-      <div class="photo-upload-grid" id="emp-doc-preview-grid">
+        {% if form.document_photo.errors %}<div class="form-error">{% for e in form.document_photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
+        {% if form.document_photo.help_text %}<small class="form-text">{{ form.document_photo.help_text }}</small>{% endif %}
         {% if form.instance.document_photo %}
-        <div class="photo-upload-item" id="emp-doc-current-item">
-          <img src="{{ form.instance.document_photo.url }}" alt="Documento atual">
-          <button type="button" class="photo-remove-btn" onclick="clearEmpDocPhoto()">&#10005;</button>
-          <span class="photo-upload-name">Documento atual</span>
-        </div>
+          <div class="mt-2">
+            <img src="{{ form.instance.document_photo.url }}" alt="Documento atual" class="photo-thumb photo-thumb--150">
+            <p class="form-text">Documento atual (envie um arquivo ou capture um novo para substituir)</p>
+          </div>
         {% endif %}
       </div>
-
-      {% if form.document_photo.errors %}<div class="form-error">{% for e in form.document_photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
-      {% if form.document_photo.help_text %}<small class="form-text">{{ form.document_photo.help_text }}</small>{% endif %}
     </div>
 
     <div class="form-row form-checkboxes">
@@ -131,87 +176,22 @@
   </form>
 </div>
 
+<script src="{% static 'js/camera-capture.js' %}"></script>
 <script>
-// --- Photo (face) ---
-const photoInput = document.getElementById('id_photo');
-const dropzone   = document.getElementById('emp-dropzone');
-const dzText     = document.getElementById('dz-text');
-const previewGrid = document.getElementById('emp-preview-grid');
+(function () {
+  var checkbox = document.getElementById('id_is_foreigner');
+  var brFields = document.getElementById('identity-br-fields');
+  var foreignFields = document.getElementById('identity-foreign-fields');
+  if (!checkbox || !brFields || !foreignFields) return;
 
-dropzone.addEventListener('click', () => photoInput.click());
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropzone.classList.remove('dragover');
-  const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/'));
-  if (file) applyFile(file);
-});
-photoInput.addEventListener('change', () => {
-  if (photoInput.files[0]) applyFile(photoInput.files[0]);
-});
+  function sync() {
+    var isForeigner = checkbox.checked;
+    brFields.style.display = isForeigner ? 'none' : '';
+    foreignFields.style.display = isForeigner ? '' : 'none';
+  }
 
-function applyFile(file) {
-  const dt = new DataTransfer();
-  dt.items.add(file);
-  photoInput.files = dt.files;
-  const reader = new FileReader();
-  reader.onload = e => {
-    previewGrid.innerHTML = `
-      <div class="photo-upload-item">
-        <img src="${e.target.result}" alt="${file.name}">
-        <button type="button" class="photo-remove-btn" onclick="clearEmpPhoto()">&#10005;</button>
-        <span class="photo-upload-name">${file.name}</span>
-      </div>`;
-    dzText.textContent = 'Clique para trocar a foto';
-  };
-  reader.readAsDataURL(file);
-}
-function clearEmpPhoto() {
-  photoInput.value = '';
-  previewGrid.innerHTML = '';
-  dzText.textContent = 'Clique ou arraste uma foto aqui';
-}
-
-// --- Document Photo ---
-const docPhotoInput = document.getElementById('id_document_photo');
-const docDropzone   = document.getElementById('emp-doc-dropzone');
-const docDzText     = document.getElementById('dz-doc-text');
-const docPreviewGrid = document.getElementById('emp-doc-preview-grid');
-
-docDropzone.addEventListener('click', () => docPhotoInput.click());
-docDropzone.addEventListener('dragover', e => { e.preventDefault(); docDropzone.classList.add('dragover'); });
-docDropzone.addEventListener('dragleave', () => docDropzone.classList.remove('dragover'));
-docDropzone.addEventListener('drop', e => {
-  e.preventDefault();
-  docDropzone.classList.remove('dragover');
-  const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/'));
-  if (file) applyDocFile(file);
-});
-docPhotoInput.addEventListener('change', () => {
-  if (docPhotoInput.files[0]) applyDocFile(docPhotoInput.files[0]);
-});
-
-function applyDocFile(file) {
-  const dt = new DataTransfer();
-  dt.items.add(file);
-  docPhotoInput.files = dt.files;
-  const reader = new FileReader();
-  reader.onload = e => {
-    docPreviewGrid.innerHTML = `
-      <div class="photo-upload-item">
-        <img src="${e.target.result}" alt="${file.name}">
-        <button type="button" class="photo-remove-btn" onclick="clearEmpDocPhoto()">&#10005;</button>
-        <span class="photo-upload-name">${file.name}</span>
-      </div>`;
-    docDzText.textContent = 'Clique para trocar';
-  };
-  reader.readAsDataURL(file);
-}
-function clearEmpDocPhoto() {
-  docPhotoInput.value = '';
-  docPreviewGrid.innerHTML = '';
-  docDzText.textContent = 'Clique ou arraste a foto do documento aqui';
-}
+  checkbox.addEventListener('change', sync);
+  sync();
+})();
 </script>
 {% endblock %}

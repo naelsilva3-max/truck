@@ -1,77 +1,136 @@
 {% extends "base.html" %}
 
 {% block title %}Funcionários{% endblock %}
+{% block container_class %} container--wide{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <h1>Funcionários</h1>
-  <div class="d-flex gap-2">
-    {% if inactive_count %}
-      {% if show_inactive %}
-        <a href="{% url 'employees:list' %}" class="btn btn--outline">Ocultar inativos ({{ inactive_count }})</a>
-      {% else %}
-        <a href="{% url 'employees:list' %}?show_inactive=1" class="btn btn--outline">Mostrar inativos ({{ inactive_count }})</a>
-      {% endif %}
-    {% endif %}
-    {% if can_edit %}
-    <a href="{% url 'employees:create' %}" class="btn btn--primary">+ Novo Funcionário</a>
-    {% endif %}
-  </div>
 </div>
 
-{% if employees %}
-<div class="table-responsive">
-  <table class="table">
-    <thead>
-      <tr>
-        <th></th>
-        <th>Nome</th>
-        <th>Cargo</th>
-        <th>Departamento</th>
-        <th>Motorista?</th>
-        <th>Status</th>
-        <th>Ações</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for employee in employees %}
-      <tr{% if not employee.is_active %} class="row-inactive"{% endif %}>
-        <td class="photo-cell">
-          {% load static %}
-          <img src="{% if employee.photo %}{{ employee.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ employee.name }}" class="photo-thumb photo-thumb--list">
-        </td>
-        <td><a href="{% url 'employees:detail' employee.pk %}">{{ employee.name }}</a></td>
-        <td>{{ employee.role }}</td>
-        <td>{{ employee.department|default:"—" }}</td>
-        <td>
-          {% if employee.is_driver %}
-            <span class="badge badge--info">Sim</span>
-          {% else %}
-            <span class="badge badge--secondary">Não</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if employee.is_active %}
-            <span class="badge badge--success">Ativo</span>
-          {% else %}
-            <span class="badge badge--danger">Inativo</span>
-          {% endif %}
-        </td>
-        <td class="table-actions">
-          <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--sm btn--secondary">Ver</a>
-          {% if can_edit %}
-          <a href="{% url 'employees:update' employee.pk %}" class="btn btn--sm btn--primary">Editar</a>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="d-flex gap-2 flex-wrap mb-3">
+  {% if inactive_count %}
+    {% if show_inactive %}
+      <a href="{% url 'employees:list' %}{% if query %}?q={{ query|urlencode }}{% endif %}" class="btn btn--outline">Ocultar inativos ({{ inactive_count }})</a>
+    {% else %}
+      <a href="{% url 'employees:list' %}?show_inactive=1{% if query %}&q={{ query|urlencode }}{% endif %}" class="btn btn--outline">Mostrar inativos ({{ inactive_count }})</a>
+    {% endif %}
+  {% endif %}
+  {% if can_edit %}
+  <a href="{% url 'employees:create' %}" class="btn btn--primary">+ Novo Funcionário</a>
+  {% endif %}
 </div>
-{% else %}
-<div class="empty-state">
-  <p>Nenhum funcionário cadastrado ainda.</p>
-  <a href="{% url 'employees:create' %}" class="btn btn--primary">Cadastrar primeiro funcionário</a>
+
+<div class="employees-page-layout">
+  <div class="employees-main-col">
+    <form method="get" action="{% url 'employees:list' %}" class="search-bar mb-3">
+      {% if show_inactive %}<input type="hidden" name="show_inactive" value="1">{% endif %}
+      <button type="submit" class="btn btn--primary">Buscar</button>
+      <input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Buscar por nome, cargo, departamento, telefone, RG, CPF, endereço, CEP...">
+      {% if query %}
+      <a href="{% url 'employees:list' %}{% if show_inactive %}?show_inactive=1{% endif %}" class="btn btn--outline">Limpar</a>
+      {% endif %}
+    </form>
+    {% if employees %}
+    {% if query %}<p class="text-muted mb-2">Resultados para "{{ query }}".</p>{% endif %}
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="col-employee-name">Nome</th>
+            <th>Cargo</th>
+            <th>CPF</th>
+            <th>Telefone</th>
+            <th>Motorista?</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        {% include 'partials/_infinite_scroll_body.html' with rows_template='employees/_rows.html' %}
+    {% elif query %}
+    <div class="empty-state">
+      <p>Nenhum funcionário encontrado para "{{ query }}".</p>
+      <a href="{% url 'employees:list' %}{% if show_inactive %}?show_inactive=1{% endif %}" class="btn btn--outline">Limpar busca</a>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <p>Nenhum funcionário cadastrado ainda.</p>
+      <a href="{% url 'employees:create' %}" class="btn btn--primary">Cadastrar primeiro funcionário</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="employees-side-col">
+    <div class="card">
+      <div class="side-panel-header">
+        <h2 class="card-title">Histórico de Entradas</h2>
+        <a href="{% url 'presence_history' %}?type=employees" class="btn btn--sm btn--outline">Ver tudo</a>
+      </div>
+      {% if recent_presence_events %}
+      <div class="table-responsive history-scroll-box" id="history-scroll-box">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Data/Hora</th>
+              <th>Direção</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody">
+            {% include 'employees/_presence_rows.html' with events=recent_presence_events %}
+          </tbody>
+        </table>
+        <div id="history-sentinel" class="infinite-sentinel"></div>
+        <div id="history-loader" class="infinite-loader" style="display:none"><span class="infinite-spinner"></span> Carregando...</div>
+      </div>
+      <script>
+      (function () {
+        var scrollBox = document.getElementById('history-scroll-box');
+        var tbody = document.getElementById('history-tbody');
+        var sentinel = document.getElementById('history-sentinel');
+        var loader = document.getElementById('history-loader');
+        if (!scrollBox || !tbody || !sentinel) return;
+
+        var nextPage = {% if recent_presence_has_next %}2{% else %}null{% endif %};
+        var loading = false;
+
+        function loadMore() {
+          if (!nextPage || loading) return;
+          loading = true;
+          loader.style.display = 'flex';
+          var url = '{% url "presence_history" %}?type=employees&compact=1&page_size=15&page=' + nextPage;
+          fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              tbody.insertAdjacentHTML('beforeend', data.html);
+              nextPage = data.has_next ? nextPage + 1 : null;
+              loading = false;
+              loader.style.display = 'none';
+            })
+            .catch(function () {
+              loading = false;
+              loader.style.display = 'none';
+            });
+        }
+
+        // root: scrollBox — intersection is measured against the small
+        // scrollable panel itself, not the whole page. Without this, a
+        // short sidebar widget's sentinel starts out already "visible" in
+        // the viewport and every page would eagerly load in one shot.
+        var observer = new IntersectionObserver(function (entries) {
+          if (entries[0].isIntersecting) loadMore();
+        }, { root: scrollBox, rootMargin: '100px' });
+
+        observer.observe(sentinel);
+      })();
+      </script>
+      {% else %}
+      <div class="empty-state">
+        <p>Nenhum registro de entrada encontrado.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 </div>
-{% endif %}
 {% endblock %}

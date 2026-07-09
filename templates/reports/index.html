@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Relatórios</h1>
+</div>
+
+{% for report in reports %}
+<div class="section-card">
+  <h2>{{ report.title }}</h2>
+  <p class="text-muted">{{ report.description }}</p>
+  {% if report.has_active_filter %}
+    <form method="get" action="{% url report.url_name %}" target="_blank" class="filter-form">
+      <div class="filter-row">
+        <div class="form-group mb-0 form-group--check">
+          <label class="form-check-label">
+            <input type="checkbox" name="show_inactive" value="1"> Incluir inativos
+          </label>
+        </div>
+        <div class="form-group mb-0 align-self-end">
+          <button type="submit" class="btn btn--primary">Gerar PDF</button>
+        </div>
+      </div>
+    </form>
+  {% elif report.has_truck_filter %}
+    <form method="get" action="{% url report.url_name %}" target="_blank" class="filter-form">
+      <div class="filter-row">
+        <div class="form-group mb-0">
+          <label for="report-truck-{{ forloop.counter }}">Caminhão</label>
+          <select name="truck" id="report-truck-{{ forloop.counter }}" class="form-control">
+            <option value="">Todos os Caminhões</option>
+            {% for t in trucks %}
+              <option value="{{ t.pk }}">{{ t.license_plate }} — {{ t.model }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group mb-0 align-self-end">
+          <button type="submit" class="btn btn--primary">Gerar PDF</button>
+        </div>
+      </div>
+    </form>
+  {% elif report.is_calendar %}
+    <a href="{% url report.url_name %}" class="btn btn--primary">Abrir Calendário</a>
+  {% elif report.has_date_filter %}
+    <form method="get" action="{% url report.url_name %}" target="_blank" class="filter-form">
+      <div class="filter-row">
+        <div class="form-group mb-0">
+          <label for="report-start-{{ forloop.counter }}">De</label>
+          <input type="date" name="start_date" id="report-start-{{ forloop.counter }}" class="form-control">
+        </div>
+        <div class="form-group mb-0">
+          <label for="report-end-{{ forloop.counter }}">Até</label>
+          <input type="date" name="end_date" id="report-end-{{ forloop.counter }}" class="form-control">
+        </div>
+        <div class="form-group mb-0 align-self-end">
+          <button type="submit" class="btn btn--primary">Gerar PDF</button>
+        </div>
+      </div>
+      <p class="form-text mt-1">Deixe as datas em branco para gerar o histórico completo.</p>
+    </form>
+  {% else %}
+    <a href="{% url report.url_name %}" target="_blank" class="btn btn--primary">Gerar PDF</a>
+  {% endif %}
+</div>
+{% empty %}
+<div class="section-card">
+  <p class="text-muted">Nenhum relatório disponível no momento.</p>
+</div>
+{% endfor %}
+{% endblock %}

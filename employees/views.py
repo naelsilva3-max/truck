@@ -1,9 +1,13 @@
+import io
+import logging
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import Http404
-# Using get_object_or_404 is more idiomatic Django than custom helper
+from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
+from django.utils import timezone
 from django.views import View
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
@@ -11,30 +15,65 @@ from accounts.logging import log_action
 from accounts.mixins import EditRequiredMixin
 from accounts.models import SystemLog
 from biometric.exceptions import BiometricDeviceNotFoundError, BiometricNotConnectedError
+from biometric.models import BiometricTemplate
 from biometric.service import BiometricService
+from employee_truck_control.http import infinite_scroll_json, is_ajax_request
 
-from attendance.models import PresenceEvent # Moved from inside method
-from attendance.service import AttendanceService # Moved from inside method
+from attendance.models import PresenceEvent
+from attendance.service import AttendanceService
 from .forms import EmployeeForm
-from .models import BiometricTemplate, Employee
+from .models import Employee
+
+logger = logging.getLogger(__name__)
 
 
 class EmployeeListView(LoginRequiredMixin, ListView):
     model = Employee
     template_name = "employees/list.html"
     context_object_name = "employees"
+    paginate_by = 20
+
+    SEARCH_FIELDS = [
+        'name', 'role', 'department', 'phone', 'rg', 'cpf',
+        'address', 'cep', 'foreign_document_type', 'foreign_document_number',
+    ]
 
     def get_queryset(self):
         show_inactive = self.request.GET.get('show_inactive') == '1'
         if show_inactive:
-            return Employee.objects.order_by('-is_active', 'name')
-        return Employee.objects.filter(is_active=True).order_by('name')
+            queryset = Employee.objects.order_by('-is_active', 'name')
+        else:
+            queryset = Employee.objects.filter(is_active=True).order_by('name')
+
+        query = self.request.GET.get('q', '').strip()
+        if query:
+            search_filter = Q()
+            for field in self.SEARCH_FIELDS:
+                search_filter |= Q(**{f'{field}__icontains': query})
+            queryset = queryset.filter(search_filter)
+        return queryset
+
+    RECENT_EVENTS_LIMIT = 15
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['show_inactive'] = self.request.GET.get('show_inactive') == '1'
+        ctx['query'] = self.request.GET.get('q', '').strip()
         ctx['inactive_count'] = Employee.objects.filter(is_active=False).count()
+        # Fetch one extra row to know whether a second page exists, without a
+        # separate COUNT(*) query — the extra row is sliced off before display.
+        recent_events = list(
+            PresenceEvent.objects.select_related('employee')
+            .order_by('-timestamp')[:self.RECENT_EVENTS_LIMIT + 1]
+        )
+        ctx['recent_presence_has_next'] = len(recent_events) > self.RECENT_EVENTS_LIMIT
+        ctx['recent_presence_events'] = recent_events[:self.RECENT_EVENTS_LIMIT]
         return ctx
+
+    def render_to_response(self, context, **response_kwargs):
+        if is_ajax_request(self.request):
+            return infinite_scroll_json(self.request, 'employees/_rows.html', context, context['page_obj'])
+        return super().render_to_response(context, **response_kwargs)
 
 
 class EmployeeCreateView(EditRequiredMixin, CreateView):
@@ -70,7 +109,6 @@ class EmployeeDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        # Using hasattr and getattr is cleaner than try/except for OneToOne relations
         ctx["has_biometric"] = hasattr(self.object, 'biometric')
         ctx["biometric_info"] = getattr(self.object, 'biometric', None)
         svc = AttendanceService()
@@ -110,6 +148,9 @@ class EmployeeUpdateView(EditRequiredMixin, UpdateView):
 class EmployeeEnrollView(EditRequiredMixin, View):
     template_name = "employees/enroll.html"
     MAX_TEMPLATE_BYTES = 10_240
+    # Number of finger samples merged into one enrollment template (ZKTeco-
+    # recommended for reliable matching).
+    ENROLL_SAMPLES = 3
 
     def __init__(self, biometric_service: BiometricService | None = None, **kwargs):
         super().__init__(**kwargs)
@@ -137,7 +178,9 @@ class EmployeeEnrollView(EditRequiredMixin, View):
 
         template_bytes: bytes | None = None
         try:
-            template_bytes = service.capture_template()
+            # Capture several samples of the same finger and merge them into a
+            # single robust template (DBMerge).
+            template_bytes = service.capture_registration(samples=self.ENROLL_SAMPLES)
         except (BiometricDeviceNotFoundError, BiometricNotConnectedError):
             messages.error(request, "Leitor biométrico não encontrado ou desconectado durante a captura.")
             return self._render_with_biometric_status(request, employee)
@@ -145,6 +188,7 @@ class EmployeeEnrollView(EditRequiredMixin, View):
             messages.error(request, "Tempo de captura esgotado. Posicione o dedo corretamente no leitor e tente novamente.")
             return self._render_with_biometric_status(request, employee)
         except Exception:
+            logger.exception("Erro inesperado ao capturar biometria para funcionário %s.", employee.pk)
             messages.error(request, "Erro ao capturar impressão digital. Tente novamente.")
             return self._render_with_biometric_status(request, employee)
         finally:
@@ -182,3 +226,88 @@ class EmployeeEnrollView(EditRequiredMixin, View):
         # Reuse the logic from the get method to avoid duplication
         # This will re-evaluate has_biometric based on the current state
         return self.get(request, employee.pk)
+
+
+class EmployeeReportPDFView(LoginRequiredMixin, View):
+    """PDF report listing all employees (active by default, ?show_inactive=1 to include all)."""
+
+    def get(self, request):
+        show_inactive = request.GET.get('show_inactive') == '1'
+
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=landscape(A4),
+            leftMargin=1.5 * cm,
+            rightMargin=1.5 * cm,
+            topMargin=2 * cm,
+            bottomMargin=2 * cm,
+        )
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=16, spaceAfter=6)
+        small_style = ParagraphStyle('Small', parent=styles['Normal'], fontSize=8)
+
+        story = [Paragraph('Relatório de Funcionários', title_style)]
+        story.append(Paragraph(
+            'Incluindo inativos' if show_inactive else 'Somente ativos',
+            styles['Normal'],
+        ))
+        story.append(Paragraph(
+            f'Gerado em: {timezone.localtime(timezone.now()).strftime("%d/%m/%Y %H:%M")}',
+            styles['Normal'],
+        ))
+        story.append(Spacer(1, 0.5 * cm))
+
+        employees = Employee.objects.order_by('name')
+        if not show_inactive:
+            employees = employees.filter(is_active=True)
+
+        if employees:
+            table_data = [['Nome', 'Cargo', 'Departamento', 'RG', 'CPF', 'Motorista?', 'Admissão', 'Status']]
+            for e in employees:
+                table_data.append([
+                    Paragraph(e.name, small_style),
+                    Paragraph(e.role, small_style),
+                    Paragraph(e.department or '—', small_style),
+                    Paragraph(e.rg or '—', small_style),
+                    Paragraph(e.cpf or '—', small_style),
+                    'Sim' if e.is_driver else 'Não',
+                    e.hire_date.strftime('%d/%m/%Y'),
+                    'Ativo' if e.is_active else 'Inativo',
+                ])
+            t = Table(
+                table_data,
+                colWidths=[4.2 * cm, 2.8 * cm, 2.8 * cm, 2.6 * cm, 2.8 * cm, 2.0 * cm, 2.3 * cm, 1.9 * cm],
+                repeatRows=1,
+            )
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1d6fa5')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f4f6f9')]),
+                ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#dee2e6')),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]))
+            story.append(t)
+            story.append(Spacer(1, 0.3 * cm))
+            story.append(Paragraph(f'Total: {employees.count()} funcionário(s).', small_style))
+        else:
+            story.append(Paragraph('<i>Nenhum funcionário encontrado.</i>', small_style))
+
+        doc.build(story)
+        buffer.seek(0)
+
+        timestamp = timezone.localtime(timezone.now()).strftime("%Y%m%d_%H%M")
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="relatorio_funcionarios_{timestamp}.pdf"'
+        return response

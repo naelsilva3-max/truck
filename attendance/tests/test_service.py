@@ -7,7 +7,8 @@ from django.utils import timezone
 
 from attendance.models import AttendanceRecord
 from attendance.service import AttendanceService
-from employees.models import BiometricTemplate, Employee
+from biometric.models import BiometricTemplate
+from employees.models import Employee
 
 
 def make_employee(**kw) -> Employee:

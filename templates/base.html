@@ -6,106 +6,6 @@
   <title>{% block title %}Controle de Transporte{% endblock %}</title>
   {% load static %}
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
-  <style>
-    .table-responsive {
-      width: 100%;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* Ajustes de Responsividade */
-    @media (max-width: 768px) {
-      html, body {
-        max-width: 100%;
-        overflow-x: hidden;
-      }
-      .navbar {
-        padding: 10px 15px;
-        width: 100%;
-        max-width: 100%;
-        flex-wrap: nowrap;
-      }
-      
-      /* Botão Flutuante no Canto Inferior */
-      .navbar-toggle {
-        display: flex !important;
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        z-index: 9999;
-        background: #1d6fa5; /* Cor principal do seu sistema */
-        color: white;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        border: 2px solid white;
-        font-size: 2rem;
-        cursor: pointer;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-      }
-
-      /* Menu que sobe de baixo para cima */
-      .navbar-menu {
-        display: none;
-        position: fixed;
-        bottom: 90px;
-        right: 20px;
-        left: 20px;
-        background: white;
-        border-radius: 15px;
-        box-shadow: 0 -5px 25px rgba(0,0,0,0.2);
-        z-index: 9998;
-        padding: 20px;
-        flex-direction: column;
-        gap: 15px;
-        border: 1px solid #ddd;
-      }
-
-      .navbar-menu.active {
-        display: flex; /* Mostra o menu quando ativo */
-      }
-
-      .navbar-menu a, .navbar-menu button {
-        width: 100%;
-        padding: 12px;
-        background: #f8f9fa;
-        border-radius: 8px;
-        text-decoration: none;
-        color: #333;
-        font-weight: bold;
-        text-align: center;
-        border: 1px solid #eee;
-      }
-
-      .navbar-user {
-        margin-bottom: 10px;
-        display: block;
-        text-align: center;
-        color: #666;
-        font-size: 0.9rem;
-      }
-
-      .form-row {
-        flex-direction: column;
-      }
-      .card {
-        min-width: 100% !important;
-      }
-      .page-header {
-        flex-direction: column;
-        gap: 10px;
-        align-items: flex-start;
-      }
-      .navbar-title {
-        display: none;
-      }
-    }
-    .navbar-toggle {
-      display: none;
-    }
-  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -123,27 +23,30 @@
         <a href="{% url 'employees:list' %}">Funcionários</a>
         <a href="{% url 'trucks:list' %}">Caminhões</a>
         <a href="{% url 'visitors:visit_list' %}">Visitas</a>
-        <a href="{% url 'presence_history' %}">Histórico</a>
-        <a href="{% url 'trucks:report_pdf' %}" target="_blank">Relatório PDF</a>
-        {% if can_edit %}
-          <a href="{% url 'biometric:simulator' %}">Simulador</a>
-        {% endif %}
-        {% if is_master %}
-          <a href="{% url 'accounts:manage_users' %}">Usuários</a>
-          <a href="{% url 'accounts:system_logs' %}">Log do Sistema</a>
-        {% endif %}
+        <a href="{% url 'reports_index' %}">Relatórios</a>
+        <div class="navbar-dropdown" id="systemMenu">
+          <button type="button" class="navbar-dropdown-toggle" onclick="document.getElementById('systemMenu').classList.toggle('open')">
+            Sistema <span class="navbar-dropdown-caret">▾</span>
+          </button>
+          <div class="navbar-dropdown-menu">
+            {% if is_master %}
+              <a href="{% url 'accounts:manage_users' %}">Usuários</a>
+              <a href="{% url 'accounts:system_logs' %}">Log do Sistema</a>
+            {% endif %}
+            <form method="post" action="{% url 'logout' %}" class="navbar-dropdown-form">
+              {% csrf_token %}
+              <button type="submit" class="navbar-dropdown-item">Sair</button>
+            </form>
+          </div>
+        </div>
         <span class="navbar-user">Olá, {{ user.username }} ({{ user_role }})</span>
-        <form method="post" action="{% url 'logout' %}" style="display:inline;">
-          {% csrf_token %}
-          <button type="submit" class="btn-link">Sair</button>
-        </form>
       {% else %}
         <a href="{% url 'login' %}">Entrar</a>
       {% endif %}
     </div>
   </nav>
 
-  <div class="container">
+  <div class="container{% block container_class %}{% endblock %}">
     {% if messages %}
       <div class="messages">
         {% for message in messages %}
@@ -158,5 +61,261 @@
   <footer class="footer">
     <p>&copy; {% now "Y" %} Employee & Truck Control</p>
   </footer>
+
+  {# Lightbox global — usado por qualquer imagem com onclick="openLightbox(this.src)" #}
+  <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" class="lightbox-img" src="" alt="">
+  </div>
+  <script>
+  function openLightbox(src) {
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox').classList.add('active');
+  }
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+  }
+  </script>
+
+  {# Lightbox com zoom/pan — para fotos que exigem inspeção detalhada (ex.: documentos).
+     Uso: onclick="openZoomableLightbox(this.src)" #}
+  <div id="zoom-modal" class="modal">
+    <span class="modal-close" onclick="closeZoomableLightbox()">&times;</span>
+    <div class="modal-image-wrapper">
+      <img class="modal-content" id="zoom-modal-img">
+    </div>
+    <div class="modal-controls">
+      <button class="zoom-btn" onclick="zoomableLightboxZoomIn()" title="Aumentar zoom">+</button>
+      <span class="zoom-level" id="zoom-modal-level">100%</span>
+      <button class="zoom-btn" onclick="zoomableLightboxZoomOut()" title="Diminuir zoom">&minus;</button>
+      <button class="zoom-btn zoom-btn--text" onclick="zoomableLightboxReset()" title="Redefinir zoom">Redefinir</button>
+    </div>
+    <div class="modal-caption">Use o scroll do mouse ou os botões para dar zoom. Clique e arraste para mover.</div>
+  </div>
+  <script>
+  (function () {
+    var modal = document.getElementById('zoom-modal');
+    var img = document.getElementById('zoom-modal-img');
+    var levelEl = document.getElementById('zoom-modal-level');
+    if (!modal || !img) return;
+
+    var currentZoom = 1, panX = 0, panY = 0;
+    var isDragging = false, startX = 0, startY = 0;
+
+    function applyTransform() {
+      img.style.transform = 'translate(calc(-50% + ' + panX + 'px), calc(-50% + ' + panY + 'px)) scale(' + currentZoom + ')';
+      img.style.left = '50%';
+      img.style.top = '50%';
+      img.style.position = 'absolute';
+      img.style.maxWidth = 'none';
+      img.style.maxHeight = 'none';
+      levelEl.textContent = Math.round(currentZoom * 100) + '%';
+    }
+
+    function zoomIn() {
+      currentZoom = Math.min(currentZoom * 1.5, 10);
+      applyTransform();
+    }
+
+    function zoomOut() {
+      currentZoom = Math.max(currentZoom / 1.5, 0.5);
+      applyTransform();
+    }
+
+    function resetZoom() {
+      currentZoom = 1;
+      panX = 0;
+      panY = 0;
+      img.style.maxWidth = '90%';
+      img.style.maxHeight = '90%';
+      img.style.position = '';
+      img.style.left = '';
+      img.style.top = '';
+      img.style.transform = '';
+      levelEl.textContent = '100%';
+    }
+
+    function openZoomableLightbox(src) {
+      img.src = src;
+      resetZoom();
+      modal.style.display = 'block';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeZoomableLightbox() {
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+
+    window.openZoomableLightbox = openZoomableLightbox;
+    window.closeZoomableLightbox = closeZoomableLightbox;
+    window.zoomableLightboxZoomIn = zoomIn;
+    window.zoomableLightboxZoomOut = zoomOut;
+    window.zoomableLightboxReset = resetZoom;
+
+    // Clique na imagem alterna entre zoom 2x e 1x
+    img.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (currentZoom === 1) {
+        zoomIn();
+        zoomIn(); // vai para ~2.25x
+      } else {
+        resetZoom();
+      }
+    });
+
+    // Duplo clique sempre dá zoom in
+    img.addEventListener('dblclick', function (e) {
+      e.preventDefault();
+      zoomIn();
+    });
+
+    // Scroll zoom (com suavização)
+    img.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        currentZoom = Math.min(currentZoom * 1.15, 10);
+      } else {
+        currentZoom = Math.max(currentZoom / 1.15, 0.5);
+      }
+      applyTransform();
+    });
+
+    // Mouse drag to pan
+    img.addEventListener('mousedown', function (e) {
+      if (currentZoom > 1) {
+        isDragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        img.style.cursor = 'grabbing';
+      }
+    });
+
+    document.addEventListener('mouseup', function () {
+      if (isDragging) {
+        isDragging = false;
+        img.style.cursor = 'grab';
+      }
+    });
+
+    document.addEventListener('mousemove', function (e) {
+      if (isDragging && currentZoom > 1) {
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        applyTransform();
+      }
+    });
+
+    // Fechar ao clicar no fundo (fora da imagem)
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal || e.target.classList.contains('modal-image-wrapper')) {
+        closeZoomableLightbox();
+      }
+    });
+
+    // Touch support for mobile (pinch zoom + pan)
+    var lastTouchDist = 0, touchStartX = 0, touchStartY = 0;
+
+    img.addEventListener('touchstart', function (e) {
+      if (e.touches.length === 2) {
+        lastTouchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      } else if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX - panX;
+        touchStartY = e.touches[0].clientY - panY;
+      }
+    });
+
+    img.addEventListener('touchmove', function (e) {
+      e.preventDefault();
+      if (e.touches.length === 2) {
+        var dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if (lastTouchDist > 0) {
+          var scale = dist / lastTouchDist;
+          currentZoom = Math.min(Math.max(currentZoom * scale, 0.5), 10);
+          applyTransform();
+        }
+        lastTouchDist = dist;
+      } else if (e.touches.length === 1 && currentZoom > 1) {
+        panX = e.touches[0].clientX - touchStartX;
+        panY = e.touches[0].clientY - touchStartY;
+        applyTransform();
+      }
+    });
+
+    img.addEventListener('touchend', function () {
+      lastTouchDist = 0;
+    });
+
+    // Keyboard
+    document.addEventListener('keydown', function (e) {
+      if (modal.style.display === 'block') {
+        if (e.key === 'Escape') closeZoomableLightbox();
+        if (e.key === '+' || e.key === '=') zoomIn();
+        if (e.key === '-') zoomOut();
+        if (e.key === '0') resetZoom();
+      }
+    });
+  })();
+  </script>
+
+  <script>
+  (function () {
+    var tbody = document.getElementById('infinite-tbody');
+    var sentinel = document.getElementById('infinite-sentinel');
+    var loader = document.getElementById('infinite-loader');
+    if (!tbody || !sentinel) return;
+
+    var nextPage = window._infiniteNextPage || null;
+    var loading = false;
+
+    function currentParams() {
+      var params = new URLSearchParams(window.location.search);
+      params.delete('page');
+      return params;
+    }
+
+    function loadMore() {
+      if (!nextPage || loading) return;
+      loading = true;
+      loader.style.display = 'flex';
+      var params = currentParams();
+      params.set('page', nextPage);
+      fetch(window.location.pathname + '?' + params.toString(), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          tbody.insertAdjacentHTML('beforeend', data.html);
+          nextPage = data.has_next ? nextPage + 1 : null;
+          loading = false;
+          loader.style.display = 'none';
+        })
+        .catch(function () {
+          loading = false;
+          loader.style.display = 'none';
+        });
+    }
+
+    var observer = new IntersectionObserver(function (entries) {
+      if (entries[0].isIntersecting) loadMore();
+    }, { rootMargin: '200px' });
+
+    observer.observe(sentinel);
+  })();
+  </script>
+
+  <script>
+  document.addEventListener('click', function (e) {
+    var menu = document.getElementById('systemMenu');
+    if (menu && !menu.contains(e.target)) {
+      menu.classList.remove('open');
+    }
+  });
+  </script>
 </body>
 </html>

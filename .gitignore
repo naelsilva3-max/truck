@@ -24,11 +24,15 @@ staticfiles/
 # IDE
 .vscode/
 .idea/
+.continue/
 *.swp
 *.swo
 *~
 .DS_Store
 Thumbs.db
+
+# Database backups
+backups/
 
 # Environment variables
 .env

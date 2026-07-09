@@ -1,0 +1,41 @@
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView
+
+from trucks.models import Truck
+
+
+class ReportsIndexView(LoginRequiredMixin, TemplateView):
+    """Central hub linking every report available in the system."""
+
+    template_name = 'reports/index.html'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['reports'] = [
+            {
+                'title': 'Calendário de Presença',
+                'description': 'Selecione um funcionário para ver suas entradas e saídas do mês em formato de calendário.',
+                'url_name': 'attendance_calendar',
+                'is_calendar': True,
+            },
+            {
+                'title': 'Relatório de Visitas',
+                'description': 'Lista de todas as visitas em ordem cronológica (da mais antiga para a mais recente), com visitante, responsável e horários. Filtre por período ou gere o histórico completo.',
+                'url_name': 'visitors:visit_report_pdf',
+                'has_date_filter': True,
+            },
+            {
+                'title': 'Relatório de Caminhões',
+                'description': 'Lista completa de caminhões cadastrados, com marca, modelo, cor e status. Selecione um caminhão para ver seu histórico de motoristas, ou gere o relatório de todos.',
+                'url_name': 'trucks:report_pdf',
+                'has_truck_filter': True,
+            },
+            {
+                'title': 'Relatório de Funcionários',
+                'description': 'Lista completa de funcionários cadastrados, com cargo, departamento, admissão e status. Inclui apenas ativos por padrão.',
+                'url_name': 'employees:report_pdf',
+                'has_active_filter': True,
+            },
+        ]
+        ctx['trucks'] = Truck.objects.order_by('license_plate')
+        return ctx

@@ -176,9 +176,12 @@ class TestListenerLifecycle:
 class TestCallbackInvocation:
 
     def test_callback_called_for_each_template(self):
-        templates = [b"t1", b"t2", b"t3"]
-        collected, _ = _run_listener_collect(templates, timeout=5.0)
-        assert collected == templates
+        presses = [b"t1", b"t2", b"t3"]
+        # A None between presses simulates the finger being lifted, which
+        # re-arms the debounce so the next press is delivered.
+        feed = [b"t1", None, b"t2", None, b"t3", None]
+        collected, _ = _run_listener_collect(feed, timeout=5.0)
+        assert collected == presses
 
     def test_callback_receives_correct_bytes(self):
         payload = b"\xde\xad\xbe\xef" * 32
@@ -195,6 +198,46 @@ class TestCallbackInvocation:
         done.wait(timeout=5.0)
         listener.stop_listener()
         assert collected == [payload]
+
+
+# ===========================================================================
+# Tests: no-finger handling and debounce (one event per press)
+# ===========================================================================
+
+class TestDebounce:
+
+    def test_no_finger_none_is_not_delivered(self):
+        """A None read (no finger on the sensor) must not trigger the callback."""
+        feed = [None, None, b"press", None]
+        collected, _ = _run_listener_collect(feed, timeout=5.0)
+        assert collected == [b"press"]
+
+    def test_single_event_per_continuous_press(self):
+        """
+        The same template returned repeatedly (a finger held down) must yield
+        exactly one event until a None (finger lifted) re-arms the listener.
+        """
+        collected: list[bytes] = []
+        first = threading.Event()
+        service = _MockService([b"held", b"held", b"held", b"held"])
+        listener = BiometricListener(service=service, poll_interval=0.0)
+
+        def cb(tmpl: bytes) -> None:
+            collected.append(tmpl)
+            first.set()
+
+        listener.start_listener(callback=cb)
+        first.wait(timeout=5.0)
+        # Give the loop time to (wrongly) fire again if debounce were broken.
+        time.sleep(0.1)
+        listener.stop_listener()
+        assert collected == [b"held"]
+
+    def test_release_between_presses_delivers_each(self):
+        """A None between two identical templates must deliver both presses."""
+        feed = [b"x", None, b"x", None]
+        collected, _ = _run_listener_collect(feed, timeout=5.0)
+        assert collected == [b"x", b"x"]
 
 
 # ===========================================================================
@@ -229,7 +272,8 @@ class TestExceptionIsolation:
         Requirement 4.4: if the user callback raises, the listener must
         continue processing subsequent events.
         """
-        templates = [b"first", b"second", b"third"]
+        # None between presses re-arms the debounce (finger lifted).
+        templates = [b"first", None, b"second", None, b"third", None]
         collected: list[bytes] = []
         done = threading.Event()
         service = _MockService(templates)
@@ -303,7 +347,8 @@ class TestExceptionIsolation:
         listener_logger.setLevel(logging.DEBUG)
 
         try:
-            templates = [b"t1", b"t2"]
+            # None between presses re-arms the debounce (finger lifted).
+            templates = [b"t1", None, b"t2", None]
             done = threading.Event()
             service = _MockService(templates)
             listener = BiometricListener(service=service, poll_interval=0.0)

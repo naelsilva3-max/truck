@@ -7,10 +7,12 @@ from django.contrib.auth.models import User
 from django.test import Client
 from django.utils import timezone
 
+from accounts.models import UserProfile
 from attendance.models import AttendanceRecord
 from attendance.service import AttendanceService
-from employees.models import BiometricTemplate, Employee
-from trucks.models import Truck, TruckAssignment
+from biometric.models import BiometricTemplate
+from employees.models import Employee
+from trucks.models import Truck, TruckAssignment, TruckBrand, TruckModel
 
 
 # ---------------------------------------------------------------------------
@@ -18,7 +20,12 @@ from trucks.models import Truck, TruckAssignment
 # ---------------------------------------------------------------------------
 
 def make_user():
-    return User.objects.create_user(username="admin", password="pass")
+    """A logged-in user with elevated (master) role — these flows all touch
+    edit-gated views (employee create/enroll, truck assignment)."""
+    user = User.objects.create_user(username="admin", password="pass")
+    user.profile.role = UserProfile.MASTER
+    user.profile.save()
+    return user
 
 
 def make_employee(**kw):
@@ -27,10 +34,16 @@ def make_employee(**kw):
     return Employee.objects.create(**defaults)
 
 
+def make_truck_model(brand_name="Volvo", model_name="FH"):
+    brand, _ = TruckBrand.objects.get_or_create(name=brand_name)
+    truck_model, _ = TruckModel.objects.get_or_create(brand=brand, name=model_name)
+    return truck_model
+
+
 def make_truck(**kw):
     defaults = dict(
-        license_plate="ABC1D23", model="Volvo FH",
-        color="Branco", chassis="12345678901234567", year=2020,
+        license_plate="ABC1D23", truck_model=make_truck_model(),
+        color="branca", chassis="12345678901234567", year=2020,
     )
     defaults.update(kw)
     return Truck.objects.create(**defaults)
@@ -69,7 +82,7 @@ class TestEnrollmentFlow:
 
         mock_service = MagicMock()
         mock_service.connect.return_value = True
-        mock_service.capture_template.return_value = dummy_template
+        mock_service.capture_registration.return_value = dummy_template
         mock_service.is_connected = True
 
         with patch("employees.views.BiometricService", return_value=mock_service):
@@ -87,7 +100,7 @@ class TestEnrollmentFlow:
 
         mock_service = MagicMock()
         mock_service.connect.return_value = True
-        mock_service.capture_template.return_value = b"\xcd" * 256
+        mock_service.capture_registration.return_value = b"\xcd" * 256
         mock_service.is_connected = True
 
         with patch("employees.views.BiometricService", return_value=mock_service):

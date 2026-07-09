@@ -4,19 +4,26 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
-from attendance.views import PresenceHistoryView
+from accounts.views import CPFLoginView
+from attendance.views import AttendanceCalendarView, PresenceHistoryView
+from employee_truck_control.views import ReportsIndexView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("accounts/login/", CPFLoginView.as_view(), name="login"),
     path("accounts/", include("django.contrib.auth.urls")),
     path("accounts/", include("accounts.urls")),
     path("employees/", include("employees.urls")),
     path("employees/", include("attendance.urls")),
     # Global presence history (not employee-scoped)
     path("attendance/presence/", PresenceHistoryView.as_view(), name="presence_history"),
+    # Attendance calendar report (pick an employee, browse month by month)
+    path("attendance/calendario/", AttendanceCalendarView.as_view(), name="attendance_calendar"),
+    # Central hub for every PDF report in the system
+    path("relatorios/", ReportsIndexView.as_view(), name="reports_index"),
     path("trucks/", include("trucks.urls")),
     path("biometric/", include("biometric.urls")),
     path("visitors/", include("visitors.urls")),
     # Redirect root to employee list
     path("", lambda request: redirect("employees:list"), name="root"),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+] + (static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) if settings.DEBUG else [])

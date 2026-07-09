@@ -16,14 +16,12 @@ class RoleRequiredMixin(LoginRequiredMixin):
     allowed_roles = ('simple', 'admin', 'master')
 
     def dispatch(self, request, *args, **kwargs):
-        response = super().dispatch(request, *args, **kwargs)
-        if not request.user.is_authenticated:
-            return response
-        role = get_role(request.user)
-        if role not in self.allowed_roles:
-            messages.error(request, 'Você não tem permissão para acessar esta página.')
-            return redirect('employees:list')
-        return response
+        if request.user.is_authenticated:
+            role = get_role(request.user)
+            if role not in self.allowed_roles:
+                messages.error(request, 'Você não tem permissão para acessar esta página.')
+                return redirect('employees:list')
+        return super().dispatch(request, *args, **kwargs)
 
 
 class EditRequiredMixin(RoleRequiredMixin):

@@ -3,29 +3,40 @@
 {% block content %}
 <div class="page-header">
   <h1>Criar Usuário</h1>
+  <a href="{% url 'accounts:manage_users' %}" class="btn btn--secondary">← Voltar</a>
 </div>
-<div class="card">
+
+<div class="form-card">
   <form method="post">
     {% csrf_token %}
     <div class="form-group">
-      <label>Nome de usuário</label>
-      <input type="text" name="username" class="form-control" required>
+      <label class="form-label">Nome de usuário</label>
+      <input type="text" name="username" class="form-control" value="{{ form_data.username|default:'' }}" required>
     </div>
     <div class="form-group">
-      <label>Senha</label>
+      <label class="form-label">CPF</label>
+      <input type="text" name="cpf" class="form-control" placeholder="000.000.000-00" value="{{ form_data.cpf|default:'' }}" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" name="email" class="form-control" value="{{ form_data.email|default:'' }}" required>
+      <small class="text-muted">Usado para recuperação de senha. Um link de verificação será enviado após o cadastro.</small>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Senha</label>
       <input type="password" name="password" class="form-control" required>
     </div>
     <div class="form-group">
-      <label>Nível de acesso</label>
+      <label class="form-label">Nível de acesso</label>
       <select name="role" class="form-control">
-        <option value="simple">Simples</option>
-        <option value="admin">Admin</option>
-        <option value="master">Master</option>
+        {% for value, label in role_choices %}
+        <option value="{{ value }}" {% if form_data.role == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
       </select>
     </div>
     <div class="form-actions">
-      <button type="submit" class="btn btn-primary">Criar</button>
-      <a href="{% url 'accounts:manage_users' %}" class="btn btn-secondary">Cancelar</a>
+      <button type="submit" class="btn btn--primary">Criar</button>
+      <a href="{% url 'accounts:manage_users' %}" class="btn btn--secondary">Cancelar</a>
     </div>
   </form>
 </div>

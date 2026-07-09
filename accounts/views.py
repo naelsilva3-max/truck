@@ -1,41 +1,105 @@
+import re
+
 from django.contrib import messages
 from django.contrib.auth.models import User
+from django.contrib.auth.views import LoginView
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 
+from accounts.emails import send_verification_email
+from accounts.forms import CPFOrUsernameAuthenticationForm
 from accounts.logging import log_action
 from accounts.mixins import MasterRequiredMixin
 from accounts.models import SystemLog, UserProfile
+from accounts.tokens import email_verification_token
 from django.views import View
+
+from employee_truck_control.http import infinite_scroll_json, is_ajax_request
+from employee_truck_control.validators import validate_cpf
+
+
+class CPFLoginView(LoginView):
+    template_name = 'registration/login.html'
+    authentication_form = CPFOrUsernameAuthenticationForm
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['login_mode'] = self.request.POST.get('login_mode') or self.request.GET.get('mode', 'cpf')
+        return context
 
 
 class UserCreateView(MasterRequiredMixin, View):
     template_name = 'accounts/user_form.html'
 
     def get(self, request):
-        return render(request, self.template_name, {'action': 'Criar'})
+        return render(request, self.template_name, {'action': 'Criar', 'role_choices': UserProfile.ROLE_CHOICES})
 
     def post(self, request):
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '').strip()
+        email = request.POST.get('email', '').strip()
+        cpf = request.POST.get('cpf', '').strip()
         role = request.POST.get('role', UserProfile.SIMPLE)
+        ctx = {
+            'action': 'Criar',
+            'role_choices': UserProfile.ROLE_CHOICES,
+            'form_data': {'username': username, 'email': email, 'cpf': cpf, 'role': role},
+        }
 
-        if not username or not password:
-            messages.error(request, 'Usuário e senha são obrigatórios.')
-            return render(request, self.template_name, {'action': 'Criar'})
+        if not username or not password or not email or not cpf:
+            messages.error(request, 'Usuário, senha, email e CPF são obrigatórios.')
+            return render(request, self.template_name, ctx)
+
+        try:
+            validate_email(email)
+        except ValidationError:
+            messages.error(request, 'Email inválido.')
+            return render(request, self.template_name, ctx)
+
+        try:
+            validate_cpf(cpf)
+        except ValidationError as exc:
+            messages.error(request, exc.messages[0])
+            return render(request, self.template_name, ctx)
 
         if User.objects.filter(username=username).exists():
             messages.error(request, 'Nome de usuário já existe.')
-            return render(request, self.template_name, {'action': 'Criar'})
+            return render(request, self.template_name, ctx)
 
-        if role not in (UserProfile.SIMPLE, UserProfile.ADMIN, UserProfile.MASTER):
+        if User.objects.filter(email__iexact=email).exists():
+            messages.error(request, 'Já existe um usuário cadastrado com este email.')
+            return render(request, self.template_name, ctx)
+
+        cpf_digits = re.sub(r'\D', '', cpf)
+        if UserProfile.objects.filter(cpf=cpf_digits).exists():
+            messages.error(request, 'Já existe um usuário cadastrado com este CPF.')
+            return render(request, self.template_name, ctx)
+
+        if role not in dict(UserProfile.ROLE_CHOICES):
             role = UserProfile.SIMPLE
 
-        user = User.objects.create_user(username=username, password=password)
+        user = User.objects.create_user(username=username, password=password, email=email)
         profile, _ = UserProfile.objects.get_or_create(user=user)
         profile.role = role
+        profile.cpf = cpf_digits
         profile.save()
         log_action(request, SystemLog.ACTION_CREATE, f'Usuário criado: {username} (role={role})')
-        messages.success(request, f'Usuário "{username}" criado com sucesso.')
+
+        if send_verification_email(request, user):
+            messages.success(
+                request,
+                f'Usuário "{username}" criado com sucesso. '
+                f'Um email de verificação foi enviado para {email}.',
+            )
+        else:
+            messages.warning(
+                request,
+                f'Usuário "{username}" criado, mas houve falha ao enviar o email de verificação. '
+                'Use a opção "Reenviar verificação" na lista de usuários.',
+            )
         return redirect('accounts:manage_users')
 
 
@@ -44,7 +108,7 @@ class UserManageView(MasterRequiredMixin, View):
 
     def get(self, request):
         users = User.objects.select_related('profile').order_by('username')
-        return render(request, self.template_name, {'users': users})
+        return render(request, self.template_name, {'users': users, 'role_choices': UserProfile.ROLE_CHOICES})
 
 
 class UserToggleActiveView(MasterRequiredMixin, View):
@@ -65,7 +129,7 @@ class UserChangeRoleView(MasterRequiredMixin, View):
     def post(self, request, pk):
         target = get_object_or_404(User, pk=pk)
         role = request.POST.get('role', UserProfile.SIMPLE)
-        if role not in (UserProfile.SIMPLE, UserProfile.ADMIN, UserProfile.MASTER):
+        if role not in dict(UserProfile.ROLE_CHOICES):
             role = UserProfile.SIMPLE
         profile, _ = UserProfile.objects.get_or_create(user=target)
         old_role = profile.role
@@ -76,10 +140,47 @@ class UserChangeRoleView(MasterRequiredMixin, View):
         return redirect('accounts:manage_users')
 
 
+class VerifyEmailView(View):
+    def get(self, request, uidb64, token):
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            user = None
+
+        if user is not None and email_verification_token.check_token(user, token):
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.email_verified = True
+            profile.save()
+            log_action(request, SystemLog.ACTION_UPDATE, f'Email verificado: {user.username}')
+            messages.success(request, 'Email verificado com sucesso!')
+        else:
+            messages.error(request, 'Link de verificação inválido ou expirado.')
+        return redirect('login')
+
+
+class ResendVerificationView(MasterRequiredMixin, View):
+    def post(self, request, pk):
+        target = get_object_or_404(User, pk=pk)
+        profile, _ = UserProfile.objects.get_or_create(user=target)
+
+        if profile.email_verified:
+            messages.info(request, f'O email de "{target.username}" já está verificado.')
+        elif not target.email:
+            messages.error(request, f'Usuário "{target.username}" não possui email cadastrado.')
+        elif send_verification_email(request, target):
+            messages.success(request, f'Email de verificação reenviado para {target.email}.')
+        else:
+            messages.error(request, 'Falha ao enviar o email. Verifique a configuração de SMTP.')
+        return redirect('accounts:manage_users')
+
+
 class SystemLogView(MasterRequiredMixin, View):
     template_name = 'accounts/system_log.html'
+    PAGE_SIZE = 50
 
     def get(self, request):
+        from django.core.paginator import Paginator
         qs = SystemLog.objects.select_related('user').exclude(action=SystemLog.ACTION_PAGE_VIEW)
 
         action = request.GET.get('action')
@@ -96,4 +197,10 @@ class SystemLogView(MasterRequiredMixin, View):
         if end_date:
             qs = qs.filter(timestamp__date__lte=end_date)
 
-        return render(request, self.template_name, {'logs': qs})
+        paginator = Paginator(qs, self.PAGE_SIZE)
+        page_obj = paginator.get_page(request.GET.get('page', 1))
+
+        if is_ajax_request(request):
+            return infinite_scroll_json(request, 'accounts/_log_rows.html', {'logs': page_obj}, page_obj)
+
+        return render(request, self.template_name, {'logs': page_obj, 'page_obj': page_obj})

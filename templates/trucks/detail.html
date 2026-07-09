@@ -13,27 +13,36 @@
 </div>
 
 {% load static %}
-<!-- Galeria de fotos -->
-{% if photos %}
 <div class="card mb-3">
-  <div class="truck-gallery">
-    {% for photo in photos %}
-    <img src="{{ photo.image.url }}" alt="Foto {{ forloop.counter }}" class="truck-gallery-img" onclick="openLightbox(this.src)">
-    {% endfor %}
-  </div>
-</div>
-{% else %}
-<div class="card mb-3">
-  <div class="truck-gallery">
-    <img src="{% static 'images/truck_placeholder.png' %}" alt="Sem foto" class="truck-gallery-img">
-  </div>
-</div>
-{% endif %}
+  <div class="truck-slideshow" id="truck-slideshow">
+    {% if truck_photos %}
+      {% for photo in truck_photos %}
+      <div class="truck-slide{% if forloop.first %} active{% endif %}">
+        <img src="{{ photo.image.url }}" alt="{{ truck.license_plate }}" class="truck-slide-img" onclick="openZoomableLightbox(this.src)">
+      </div>
+      {% endfor %}
+    {% elif truck.photo %}
+      <div class="truck-slide active">
+        <img src="{{ truck.photo.url }}" alt="{{ truck.license_plate }}" class="truck-slide-img" onclick="openZoomableLightbox(this.src)">
+      </div>
+    {% else %}
+      <div class="truck-slide active">
+        <img src="{% static 'images/truck_placeholder.png' %}" alt="Sem foto" class="truck-slide-img">
+      </div>
+    {% endif %}
 
-<!-- Lightbox simples -->
-<div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;" onclick="closeLightbox()">
-  <img id="lightbox-img" src="" style="max-width:90vw;max-height:90vh;border-radius:4px;">
+    {% if truck_photos|length > 1 %}
+    <button type="button" class="truck-slide-nav truck-slide-nav--prev" onclick="truckSlideshowMove(-1)" aria-label="Foto anterior">&#8249;</button>
+    <button type="button" class="truck-slide-nav truck-slide-nav--next" onclick="truckSlideshowMove(1)" aria-label="Próxima foto">&#8250;</button>
+    <div class="truck-slide-dots">
+      {% for photo in truck_photos %}
+      <span class="truck-slide-dot{% if forloop.first %} active{% endif %}" onclick="truckSlideshowGoTo({{ forloop.counter0 }})"></span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
 </div>
+<script src="{% static 'js/truck-slideshow.js' %}"></script>
 
 <div class="card mb-3">
   <dl class="detail-list">
@@ -49,6 +58,9 @@
         <span class="badge badge--danger">Inativo</span>
       {% endif %}
     </dd>
+    {% if truck.notes %}
+    <dt>Observação</dt><dd>{{ truck.notes|linebreaksbr }}</dd>
+    {% endif %}
   </dl>
 </div>
 
@@ -57,7 +69,7 @@
   {% if current_driver %}
     <p><span class="badge badge--info">{{ current_driver.name }}</span></p>
     {% if can_edit %}
-    <form method="post" action="{% url 'trucks:unassign' truck.pk %}" style="display:inline;">
+    <form method="post" action="{% url 'trucks:unassign' truck.pk %}" class="d-inline">
       {% csrf_token %}
       <button type="submit" class="btn btn--danger">Desassociar Motorista</button>
     </form>
@@ -120,14 +132,4 @@
   <p class="text-muted">Sem histórico de associações.</p>
   {% endif %}
 </div>
-
-<script>
-function openLightbox(src) {
-  document.getElementById('lightbox-img').src = src;
-  document.getElementById('lightbox').style.display = 'flex';
-}
-function closeLightbox() {
-  document.getElementById('lightbox').style.display = 'none';
-}
-</script>
 {% endblock %}

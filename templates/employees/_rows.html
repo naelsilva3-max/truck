@@ -1,0 +1,29 @@
+{% load static %}
+{% for employee in employees %}
+<tr{% if not employee.is_active %} class="row-inactive"{% endif %}>
+  <td class="photo-cell">
+    <img src="{% if employee.photo %}{{ employee.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ employee.name }}" class="photo-thumb photo-thumb--list">
+  </td>
+  <td class="col-employee-name"><a href="{% url 'employees:detail' employee.pk %}">{{ employee.name }}</a></td>
+  <td>{{ employee.role }}</td>
+  <td>{{ employee.cpf|default:"—" }}</td>
+  <td>{{ employee.phone|default:"—" }}</td>
+  <td>
+    {% if employee.is_driver %}
+      <span class="badge badge--info">Sim</span>
+    {% else %}
+      <span class="badge badge--secondary">Não</span>
+    {% endif %}
+  </td>
+  <td>
+    {% if employee.is_active %}
+      <span class="badge badge--success">Ativo</span>
+    {% else %}
+      <span class="badge badge--danger">Inativo</span>
+    {% endif %}
+  </td>
+  <td class="table-actions">
+    <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--sm btn--secondary">Ver</a>
+  </td>
+</tr>
+{% endfor %}

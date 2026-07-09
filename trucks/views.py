@@ -5,14 +5,18 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import CharField, Q
+from django.db.models.functions import Cast
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
 
+from accounts.mixins import EditRequiredMixin
+from employee_truck_control.http import infinite_scroll_json, is_ajax_request, parse_date_param
 from employees.models import Employee
 from .forms import TruckAssignmentForm, TruckForm
-from .models import Truck, TruckAssignment, TruckBrand, TruckModel
+from .models import Truck, TruckAssignment, TruckBrand, TruckModel, TruckPhoto
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +34,25 @@ def list_assignments(truck_id: int):
     return TruckAssignment.objects.filter(truck_id=truck_id).select_related('driver')
 
 
+def get_cover_photo_url(truck: Truck) -> str | None:
+    """First photo added to the truck's gallery, falling back to the legacy single-photo field."""
+    first_photo = truck.photos.first()
+    if first_photo:
+        return first_photo.image.url
+    if truck.photo:
+        return truck.photo.url
+    return None
+
+
+def save_truck_photos(truck: Truck, files) -> None:
+    """Append uploaded images to the truck's photo gallery, continuing the display order."""
+    if not files:
+        return
+    next_order = (truck.photos.count())
+    for offset, image in enumerate(files):
+        TruckPhoto.objects.create(truck=truck, image=image, order=next_order + offset)
+
+
 # ---------------------------------------------------------------------------
 # Brand/Model management + JSON API
 # ---------------------------------------------------------------------------
@@ -41,7 +64,7 @@ class TruckModelsJsonView(LoginRequiredMixin, View):
         return JsonResponse(list(models), safe=False)
 
 
-class TruckBrandModelManageView(LoginRequiredMixin, View):
+class TruckBrandModelManageView(EditRequiredMixin, View):
     """Simple page to create brands and models."""
     template_name = 'trucks/brands.html'
 
@@ -92,13 +115,44 @@ class TruckBrandModelManageView(LoginRequiredMixin, View):
 # ---------------------------------------------------------------------------
 
 class TruckListView(LoginRequiredMixin, View):
+    PAGE_SIZE = 20
+
+    SEARCH_FIELDS = [
+        'license_plate', 'model', 'chassis', 'color',
+        'truck_model__name', 'truck_model__brand__name',
+    ]
+
     def get(self, request):
-        trucks = Truck.objects.all()
-        trucks_with_driver = [(truck, get_current_driver(truck.pk)) for truck in trucks]
-        return render(request, 'trucks/list.html', {'trucks_with_driver': trucks_with_driver})
+        from django.core.paginator import Paginator
+        query = request.GET.get('q', '').strip()
+
+        trucks_qs = Truck.objects.all()
+        if query:
+            # year is numeric — cast to text so it can be matched with icontains
+            # portably (Postgres rejects ILIKE directly against an integer column).
+            trucks_qs = trucks_qs.annotate(year_str=Cast('year', CharField()))
+            search_filter = Q(year_str__icontains=query)
+            for field in self.SEARCH_FIELDS:
+                search_filter |= Q(**{f'{field}__icontains': query})
+            trucks_qs = trucks_qs.filter(search_filter)
+
+        paginator = Paginator(trucks_qs, self.PAGE_SIZE)
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+        trucks_with_driver = []
+        for truck in page_obj:
+            truck.cover_photo_url = get_cover_photo_url(truck)
+            trucks_with_driver.append((truck, get_current_driver(truck.pk)))
+        if is_ajax_request(request):
+            return infinite_scroll_json(request, 'trucks/_rows.html', {'trucks_with_driver': trucks_with_driver}, page_obj)
+        return render(request, 'trucks/list.html', {
+            'trucks_with_driver': trucks_with_driver,
+            'page_obj': page_obj,
+            'query': query,
+        })
 
 
-class TruckCreateView(LoginRequiredMixin, View):
+class TruckCreateView(EditRequiredMixin, View):
     def get(self, request):
         return render(request, 'trucks/form.html', {
             'form': TruckForm(), 'action': 'Cadastrar',
@@ -109,6 +163,7 @@ class TruckCreateView(LoginRequiredMixin, View):
         if form.is_valid():
             try:
                 truck = form.save()
+                save_truck_photos(truck, request.FILES.getlist('photos'))
                 messages.success(request, f'Caminhão {truck.license_plate} cadastrado com sucesso.')
                 return redirect('trucks:detail', pk=truck.pk)
             except ValidationError as exc:
@@ -123,13 +178,14 @@ class TruckDetailView(LoginRequiredMixin, View):
         truck = get_object_or_404(Truck, pk=pk)
         return render(request, 'trucks/detail.html', {
             'truck': truck,
+            'truck_photos': list(truck.photos.all()),
             'current_driver': get_current_driver(pk),
             'assignments': list_assignments(pk),
             'assign_form': TruckAssignmentForm(),
         })
 
 
-class TruckUpdateView(LoginRequiredMixin, View):
+class TruckUpdateView(EditRequiredMixin, View):
     def get(self, request, pk):
         truck = get_object_or_404(Truck, pk=pk)
         return render(request, 'trucks/form.html', {
@@ -144,6 +200,11 @@ class TruckUpdateView(LoginRequiredMixin, View):
         if form.is_valid():
             try:
                 form.save()
+                delete_ids = request.POST.getlist('delete_photos')
+                if delete_ids:
+                    for photo in truck.photos.filter(pk__in=delete_ids):
+                        photo.delete()
+                save_truck_photos(truck, request.FILES.getlist('photos'))
                 messages.success(request, 'Caminhão atualizado com sucesso.')
                 return redirect('trucks:detail', pk=pk)
             except ValidationError as exc:
@@ -157,7 +218,7 @@ class TruckUpdateView(LoginRequiredMixin, View):
 # Assignment views
 # ---------------------------------------------------------------------------
 
-class AssignDriverView(LoginRequiredMixin, View):
+class AssignDriverView(EditRequiredMixin, View):
     def post(self, request, pk):
         truck = get_object_or_404(Truck, pk=pk)
         form = TruckAssignmentForm(request.POST)
@@ -168,15 +229,15 @@ class AssignDriverView(LoginRequiredMixin, View):
             try:
                 assignment.save()
                 messages.success(request, f'Motorista {assignment.driver.name} associado ao caminhão {truck.license_plate}.')
-            except (ValidationError, Exception) as exc:
-                messages.error(request, str(exc))
+            except ValidationError as exc:
+                messages.error(request, ' '.join(exc.messages))
         else:
             for error in form.errors.values():
                 messages.error(request, error.as_text())
         return redirect('trucks:detail', pk=pk)
 
 
-class UnassignDriverView(LoginRequiredMixin, View):
+class UnassignDriverView(EditRequiredMixin, View):
     def post(self, request, pk):
         truck = get_object_or_404(Truck, pk=pk)
         assignment = TruckAssignment.objects.filter(
@@ -205,13 +266,14 @@ class AssignmentHistoryView(LoginRequiredMixin, View):
 
 class GlobalAssignmentHistoryView(LoginRequiredMixin, View):
     """Global driver-assignment history across all trucks, with filters."""
+    PAGE_SIZE = 30
 
     def get(self, request):
-        from datetime import date
+        from django.core.paginator import Paginator
         truck_pk = request.GET.get('truck')
         driver_pk = request.GET.get('driver')
-        start_date = self._parse_date(request.GET.get('start_date'))
-        end_date = self._parse_date(request.GET.get('end_date'))
+        start_date = parse_date_param(request.GET.get('start_date'))
+        end_date = parse_date_param(request.GET.get('end_date'))
 
         qs = TruckAssignment.objects.select_related('truck', 'driver').order_by('-assigned_at')
 
@@ -221,20 +283,26 @@ class GlobalAssignmentHistoryView(LoginRequiredMixin, View):
             selected_truck = get_object_or_404(Truck, pk=truck_pk)
             qs = qs.filter(truck=selected_truck)
         if driver_pk:
-            from employees.models import Employee as _Employee
-            selected_driver = get_object_or_404(_Employee, pk=driver_pk)
+            selected_driver = get_object_or_404(Employee, pk=driver_pk)
             qs = qs.filter(driver=selected_driver)
         if start_date:
             qs = qs.filter(assigned_at__date__gte=start_date)
         if end_date:
             qs = qs.filter(assigned_at__date__lte=end_date)
 
-        from employees.models import Employee as _Employee
         trucks = Truck.objects.order_by('license_plate')
-        drivers = _Employee.objects.filter(is_driver=True).order_by('name')
+        drivers = Employee.objects.filter(is_driver=True).order_by('name')
+
+        paginator = Paginator(qs, self.PAGE_SIZE)
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+
+        if is_ajax_request(request):
+            return infinite_scroll_json(request, 'trucks/_assignment_rows.html', {'assignments': page_obj}, page_obj)
 
         return render(request, 'trucks/global_assignments.html', {
-            'assignments': qs,
+            'assignments': page_obj,
+            'page_obj': page_obj,
             'trucks': trucks,
             'drivers': drivers,
             'selected_truck': selected_truck,
@@ -243,16 +311,6 @@ class GlobalAssignmentHistoryView(LoginRequiredMixin, View):
             'end_date': end_date,
         })
 
-    @staticmethod
-    def _parse_date(value):
-        if not value:
-            return None
-        try:
-            from datetime import date
-            return date.fromisoformat(value)
-        except ValueError:
-            return None
-
 
 # ---------------------------------------------------------------------------
 # PDF Report view
@@ -260,6 +318,11 @@ class GlobalAssignmentHistoryView(LoginRequiredMixin, View):
 
 class TruckReportPDFView(LoginRequiredMixin, View):
     def get(self, request):
+        truck_pk = request.GET.get('truck')
+        selected_truck = None
+        if truck_pk:
+            selected_truck = get_object_or_404(Truck, pk=truck_pk)
+
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -293,7 +356,13 @@ class TruckReportPDFView(LoginRequiredMixin, View):
         )
 
         story = []
-        story.append(Paragraph('Relatório de Caminhões e Histórico de Associações', title_style))
+        if selected_truck:
+            story.append(Paragraph(
+                f'Relatório do Caminhão {selected_truck.license_plate} e Histórico de Motoristas',
+                title_style,
+            ))
+        else:
+            story.append(Paragraph('Relatório de Caminhões e Histórico de Associações', title_style))
         story.append(Paragraph(
             f'Gerado em: {timezone.localtime(timezone.now()).strftime("%d/%m/%Y %H:%M")}',
             styles['Normal'],
@@ -301,6 +370,8 @@ class TruckReportPDFView(LoginRequiredMixin, View):
         story.append(Spacer(1, 0.5 * cm))
 
         trucks = Truck.objects.prefetch_related('assignments__driver').order_by('license_plate')
+        if selected_truck:
+            trucks = trucks.filter(pk=selected_truck.pk)
 
         for truck in trucks:
             # Truck header
@@ -351,7 +422,11 @@ class TruckReportPDFView(LoginRequiredMixin, View):
         doc.build(story)
         buffer.seek(0)
 
-        filename = f'relatorio_caminhoes_{timezone.localtime(timezone.now()).strftime("%Y%m%d_%H%M")}.pdf'
+        timestamp = timezone.localtime(timezone.now()).strftime("%Y%m%d_%H%M")
+        if selected_truck:
+            filename = f'relatorio_caminhao_{selected_truck.license_plate}_{timestamp}.pdf'
+        else:
+            filename = f'relatorio_caminhoes_{timestamp}.pdf'
         response = HttpResponse(buffer, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         return response

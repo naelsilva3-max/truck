@@ -1,0 +1,38 @@
+{% for visit in visits %}
+<tr{% if visit.is_active %} class="row-active"{% else %} class="row-completed"{% endif %}>
+  <td>
+    <a href="{% url 'visitors:visit_detail' visit.pk %}">{{ visit.visitor.name }}</a>
+    {% if visit.visitor.company %}
+      <br><small>{{ visit.visitor.company }}</small>
+    {% endif %}
+  </td>
+  <td>{{ visit.visit_date|date:"d/m/Y" }}</td>
+  <td>{{ visit.arrival_time|time:"H:i" }}</td>
+  <td>{{ visit.scheduled_departure_time|time:"H:i" }}</td>
+  <td>
+    {% if visit.actual_departure_time %}
+      {{ visit.actual_departure_time|time:"H:i" }}
+    {% else %}
+      <span class="badge badge--warning">—</span>
+    {% endif %}
+  </td>
+  <td>{{ visit.responsible.name }}</td>
+  <td>
+    {% if visit.is_active %}
+      <span class="badge badge--success">Em visita</span>
+    {% else %}
+      <span class="badge badge--secondary">Finalizada</span>
+    {% endif %}
+  </td>
+  <td class="table-actions col-visit-actions">
+    <a href="{% url 'visitors:visit_detail' visit.pk %}" class="btn btn--sm btn--secondary">Detalhes</a>
+    <a href="{% url 'visitors:visit_badge' visit.pk %}" class="btn btn--sm btn--primary" target="_blank">Crachá PDF</a>
+    {% if visit.is_active and can_edit %}
+    <form method="post" action="{% url 'visitors:visit_depart' visit.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn--sm btn--danger">Registrar Saída</button>
+    </form>
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}

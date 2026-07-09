@@ -1,0 +1,19 @@
+# Copie para /etc/systemd/system/gunicorn.service na VPS.
+# Ajuste User/Group/WorkingDirectory/paths conforme onde o repo for clonado.
+[Unit]
+Description=Gunicorn daemon for employee_truck_control
+After=network.target
+
+[Service]
+User=deploy
+Group=www-data
+WorkingDirectory=/home/deploy/app
+EnvironmentFile=/home/deploy/app/.env
+ExecStart=/home/deploy/app/.venv/bin/gunicorn \
+    --workers 3 \
+    --bind unix:/home/deploy/app/gunicorn.sock \
+    employee_truck_control.wsgi:application
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

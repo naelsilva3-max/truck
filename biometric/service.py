@@ -23,6 +23,7 @@ for testing).
 from __future__ import annotations
 
 import logging
+import time
 from typing import Protocol, runtime_checkable
 
 from biometric.exceptions import BiometricDeviceNotFoundError, BiometricNotConnectedError
@@ -52,7 +53,8 @@ class BiometricBackend(Protocol):
     def disconnect(self) -> None:
         ...  # pragma: no cover
 
-    def capture_template(self) -> bytes:
+    def capture_template(self) -> bytes | None:
+        # Returns the captured template, or None when no finger is on the sensor.
         ...  # pragma: no cover
 
     def is_connected(self) -> bool:
@@ -103,16 +105,25 @@ class PyzkfpBackend:
         """
         Connect to the ZKTeco ZK9500.
 
+        The ZK9500 is a USB desktop scanner driven through the local ZKFinger
+        SDK (``pyzkfp``); there is no network/TCP mode.  ``host``/``port`` are
+        accepted only to keep the shared backend signature and are rejected
+        with a clear error if supplied.
+
         Parameters
         ----------
         device_id:
-            Zero-based USB device index (default 0 when neither host nor
-            device_id is specified).
-        host:
-            IP address / hostname for TCP/IP connection.
-        port:
-            TCP port for TCP/IP connection (ignored when ``host`` is None).
+            Zero-based USB device index (default 0).
+        host, port:
+            Not supported for the ZK9500 (USB only).  Passing ``host`` raises
+            ``BiometricDeviceNotFoundError``.
         """
+        if host is not None:
+            raise BiometricDeviceNotFoundError(
+                "TCP/IP connection is not supported for the ZKTeco ZK9500. "
+                "The reader is a USB device — omit --host/--port."
+            )
+
         pyzkfp = self._import_zkfp()
 
         try:
@@ -121,26 +132,30 @@ class PyzkfpBackend:
 
             count = zk.GetDeviceCount()
             if count == 0:
+                # Nothing to open — release the SDK before bailing out.
+                try:
+                    zk.Terminate()
+                except Exception:  # noqa: BLE001
+                    pass
                 raise BiometricDeviceNotFoundError(
                     "No ZKTeco ZK9500 device was found.  "
-                    "Make sure the reader is connected and powered on."
+                    "Make sure the reader is connected and the ZKFinger driver is installed."
                 )
 
-            if host is not None:
-                # TCP/IP connection
-                tcp_port = port if port is not None else 4370
-                ret = zk.ConnectTCP(host, tcp_port)
-            else:
-                idx = int(device_id) if device_id is not None else 0
-                ret = zk.OpenDevice(idx)
-
-            if ret != 0:
-                raise BiometricDeviceNotFoundError(
-                    f"Failed to open ZKTeco ZK9500 device (error code {ret})."
-                )
+            idx = int(device_id) if device_id is not None else 0
+            # OpenDevice selects the active USB device inside the SDK; it does
+            # not return a status code, so success is verified by the device
+            # count above and by capture working afterwards.
+            zk.OpenDevice(idx)
 
             self._zk = zk
-            logger.info("ZKTeco ZK9500 connected successfully.")
+            self._device_index = idx
+            # Note: zk.Light(...) is intentionally not called here — pyzkfp
+            # runs it on a background thread that calls SetParameters right
+            # after OpenDevice, before the capture stream is running; on the
+            # ZK9500 this raises DeviceNotStartedError internally and leaves
+            # the device handle unusable for AcquireFingerprint afterwards.
+            logger.info("ZKTeco ZK9500 connected successfully (device index %d).", idx)
             return True
 
         except BiometricDeviceNotFoundError:
@@ -151,9 +166,22 @@ class PyzkfpBackend:
             ) from exc
 
     def disconnect(self) -> None:
-        """Release hardware resources.  No-op if already disconnected."""
+        """
+        Release hardware resources.  No-op if already disconnected.
+
+        ``OpenDevice`` claims the USB device at two levels inside pyzkfp; if
+        ``CloseDevice`` is skipped and only ``Terminate`` is called, the
+        device is left claimed at the driver level and the *next* ``connect()``
+        (even from a fresh process) gets a handle that fails with
+        ``InvalidHandleError`` on every capture.  Always close before
+        terminating.
+        """
         if self._zk is None:
             return
+        try:
+            self._zk.CloseDevice()
+        except Exception:  # noqa: BLE001
+            logger.warning("Error while closing ZKTeco ZK9500 device.", exc_info=True)
         try:
             self._zk.Terminate()
         except Exception:  # noqa: BLE001
@@ -162,38 +190,112 @@ class PyzkfpBackend:
             self._zk = None
             logger.info("ZKTeco ZK9500 disconnected.")
 
-    def capture_template(self) -> bytes:
-        """Capture a fingerprint template from the connected device."""
+    def capture_template(self) -> bytes | None:
+        """
+        Read the sensor once (non-blocking).
+
+        ``pyzkfp.AcquireFingerprint()`` returns a ``(template, image)`` tuple
+        while a finger is on the sensor, or a falsy value when the sensor is
+        empty.  We return only the template bytes, or ``None`` when no finger
+        is present, so callers can poll without treating "no finger" as an error.
+        """
         if self._zk is None:
             raise BiometricNotConnectedError()
 
         try:
-            template = self._zk.AcquireFingerprint()
-            if template is None or len(template) == 0:
-                raise RuntimeError("Device returned an empty template.")
-            return bytes(template)
-        except (BiometricNotConnectedError, RuntimeError):
-            raise
+            capture = self._zk.AcquireFingerprint()
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(
                 f"Error capturing fingerprint template: {exc}"
             ) from exc
 
+        if not capture:
+            # No finger on the sensor right now.
+            return None
+
+        template, _image = capture
+        if template is None or len(template) == 0:
+            return None
+        return bytes(template)
+
+    def merge_templates(self, templates: list[bytes]) -> bytes:
+        """
+        Merge exactly 3 samples of the same finger into one enrollment
+        template via the native ``DBMerge`` call (the ZKTeco-recommended way
+        to build a robust template; the native function itself takes exactly
+        3 templates — a fixed SDK constraint, not a choice made here).
+
+        This bypasses ``pyzkfp``'s own ``ZKFP2.DBMerge()`` wrapper.  On the
+        .NET side, the merged template's real length comes back through a
+        ``ref int`` out-parameter (``regTempLen``), but that wrapper discards
+        it — it assigns the whole ``(ret, regTempLen)`` tuple pythonnet
+        returns to a single ``ret`` variable — so it always reports the full
+        padded 2048-byte buffer regardless of the merged template's true
+        size. That trailing zero padding is what makes the real device's
+        ``DBAdd`` reject the template with ``FailedToAddTemplateError``.  We
+        call the low-level binding directly to read the real length and trim
+        the buffer to it before returning.
+        """
+        if self._zk is None:
+            raise BiometricNotConnectedError()
+        if len(templates) != 3:
+            raise ValueError("merge_templates requires exactly 3 samples.")
+
+        from System import Array, Byte  # noqa: PLC0415
+
+        reg_template = Array[Byte](1024 * 2)
+        ret, reg_template_len = self._zk.zkfp2.DBMerge(
+            self._zk.dbHandle,
+            templates[0], templates[1], templates[2],
+            reg_template, reg_template.Length,
+        )
+        if ret != 0:
+            raise RuntimeError(f"DBMerge failed (error code {ret}).")
+        if reg_template_len <= 0:
+            raise RuntimeError("DBMerge returned an empty template.")
+        return bytes(reg_template)[:reg_template_len]
+
     def is_connected(self) -> bool:
         return self._zk is not None
 
     # ------------------------------------------------------------------
-    # pyzkfp scoring (used by BiometricService.identify when available)
+    # pyzkfp 1:N identification (used by BiometricService.identify)
     # ------------------------------------------------------------------
+    #
+    # ``DBMatch`` (1:1 raw-template comparison) is NOT used here: on the real
+    # ZK9500, comparing a freshly captured raw template against a template
+    # produced by ``DBMerge`` (i.e. every enrolled template — see
+    # ``merge_templates`` above) reliably raises ``OperationFailedError``
+    # regardless of argument order.  The SDK's own documented pattern for
+    # this exact scenario is to load enrolled templates into the device's
+    # in-memory match database via ``DBAdd`` and then run a single 1:N
+    # ``DBIdentify`` call against them — this is also what the aqasemi/pyzkfp
+    # wrapper special-cases error code -17 ("Operation failed") for,
+    # treating it as "no match" instead of raising.
 
-    def match_score(self, template1: bytes, template2: bytes) -> int:
+    def clear_enrolled_templates(self) -> None:
+        """Clear the device's in-memory match database."""
+        if self._zk is None:
+            raise BiometricNotConnectedError()
+        self._zk.DBClear()
+
+    def add_enrolled_template(self, finger_id: int, template: bytes) -> None:
+        """Load one enrolled (merged) template into the device's match database."""
+        if self._zk is None:
+            raise BiometricNotConnectedError()
+        self._zk.DBAdd(finger_id, template)
+
+    def identify_1n(self, template: bytes) -> tuple[int, int]:
         """
-        Return the pyzkfp match score between two templates.
-        A higher score means a better match.
+        Run a 1:N identification of *template* against every template
+        previously loaded via ``add_enrolled_template``.
+
+        Returns ``(finger_id, score)``; ``finger_id`` is 0 when nothing matches.
         """
         if self._zk is None:
             raise BiometricNotConnectedError()
-        return int(self._zk.Match(template1, template2))
+        finger_id, score = self._zk.DBIdentify(template)
+        return int(finger_id), int(score)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +320,10 @@ class UnavailableBackend:
         # No-op: nothing to disconnect.
         pass
 
-    def capture_template(self) -> bytes:
+    def capture_template(self) -> bytes | None:
+        raise BiometricDeviceNotFoundError(self._MSG)
+
+    def merge_templates(self, templates: list[bytes]) -> bytes:
         raise BiometricDeviceNotFoundError(self._MSG)
 
     def is_connected(self) -> bool:
@@ -319,25 +424,110 @@ class BiometricService:
         """
         self._backend.disconnect()
 
-    def capture_template(self) -> bytes:
+    def capture_template(self) -> bytes | None:
         """
-        Capture a fingerprint template from the connected device.
+        Read the sensor once (non-blocking).
 
         Returns
         -------
-        bytes
-            Raw template bytes returned by the ZK9500.
+        bytes | None
+            The captured template bytes, or ``None`` when no finger is on the
+            sensor.  Designed for polling loops (see ``BiometricListener``).
 
         Raises
         ------
         BiometricNotConnectedError
             If the service is not connected to a device.
         RuntimeError
-            If the device returns an invalid / empty template.
+            If the device errors while reading.
         """
         if not self._backend.is_connected():
             raise BiometricNotConnectedError()
         return self._backend.capture_template()
+
+    def capture_blocking(
+        self,
+        timeout: float = 15.0,
+        poll_interval: float = 0.2,
+    ) -> bytes:
+        """
+        Block until a finger is read or *timeout* seconds elapse.
+
+        Returns the captured template bytes.
+
+        Raises
+        ------
+        BiometricNotConnectedError
+            If the service is not connected.
+        TimeoutError
+            If no finger is presented within *timeout* seconds.
+        """
+        if not self._backend.is_connected():
+            raise BiometricNotConnectedError()
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            template = self._backend.capture_template()
+            if template:
+                return template
+            time.sleep(poll_interval)
+        raise TimeoutError("Nenhuma impressão digital foi lida dentro do tempo limite.")
+
+    def _wait_for_release(self, timeout: float, poll_interval: float) -> None:
+        """Block until the sensor reports no finger (or *timeout* elapses)."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not self._backend.capture_template():
+                return
+            time.sleep(poll_interval)
+
+    def capture_registration(
+        self,
+        samples: int = 3,
+        timeout: float = 20.0,
+        poll_interval: float = 0.2,
+    ) -> bytes:
+        """
+        Capture *samples* readings of the same finger and merge them into a
+        single robust enrollment template (ZKTeco-recommended, via ``DBMerge``).
+
+        The caller is asked, between samples, to lift and re-place the finger;
+        this method waits for the finger to be released before each new sample.
+
+        Returns the merged enrollment template bytes.
+
+        Raises
+        ------
+        BiometricNotConnectedError
+            If the service is not connected.
+        TimeoutError
+            If a sample is not provided within *timeout* seconds.
+        RuntimeError
+            If merging the samples fails.
+        """
+        if not self._backend.is_connected():
+            raise BiometricNotConnectedError()
+        if samples < 1:
+            raise ValueError("samples must be >= 1.")
+
+        collected: list[bytes] = []
+        for i in range(samples):
+            template = self.capture_blocking(timeout=timeout, poll_interval=poll_interval)
+            collected.append(template)
+            logger.info("Enrollment sample %d/%d captured.", i + 1, samples)
+            if i < samples - 1:
+                # Require the finger to be lifted before the next sample so the
+                # same press is not counted twice.
+                self._wait_for_release(timeout=timeout, poll_interval=poll_interval)
+
+        if len(collected) == 1:
+            return collected[0]
+
+        merge = getattr(self._backend, "merge_templates", None)
+        if merge is None:
+            # Backend has no merge support — fall back to the first sample.
+            return collected[0]
+        return merge(collected)
 
     def identify(
         self,
@@ -397,35 +587,49 @@ class BiometricService:
         template: bytes,
         templates: list[tuple[int, bytes]],
     ) -> int | None:
-        """Use pyzkfp scoring for 1:N matching."""
+        """
+        Use pyzkfp's native 1:N identification (``DBAdd`` + ``DBIdentify``).
+
+        The device's in-memory match database is rebuilt from *templates* on
+        every call.  This is simpler and more robust than comparing bytes in
+        Python (``DBMatch`` cannot reliably compare a raw capture against a
+        ``DBMerge``-produced template — see ``PyzkfpBackend.identify_1n``),
+        and rebuilding is cheap for the employee counts this system targets.
+        """
         assert isinstance(self._backend, PyzkfpBackend)
 
-        best_score = 0
-        best_employee_id: int | None = None
+        try:
+            self._backend.clear_enrolled_templates()
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to clear device match database.", exc_info=True)
 
+        loaded_ids: set[int] = set()
         for employee_id, stored_template in templates:
             try:
-                score = self._backend.match_score(template, stored_template)
+                self._backend.add_enrolled_template(employee_id, stored_template)
+                loaded_ids.add(employee_id)
             except Exception:  # noqa: BLE001
                 logger.warning(
-                    "match_score failed for employee %s; skipping.", employee_id,
-                    exc_info=True,
+                    "Failed to load template for employee %s into device; skipping.",
+                    employee_id, exc_info=True,
                 )
-                continue
 
-            if score > best_score:
-                best_score = score
-                best_employee_id = employee_id
+        if not loaded_ids:
+            return None
 
-        if best_score >= self._min_score:
-            logger.debug(
-                "Identified employee %s with score %d.", best_employee_id, best_score
-            )
-            return best_employee_id
+        try:
+            finger_id, score = self._backend.identify_1n(template)
+        except Exception:  # noqa: BLE001
+            logger.warning("DBIdentify failed.", exc_info=True)
+            return None
+
+        if finger_id and finger_id in loaded_ids and score >= self._min_score:
+            logger.debug("Identified employee %s with score %d.", finger_id, score)
+            return finger_id
 
         logger.debug(
-            "Best match score %d is below threshold %d; returning None.",
-            best_score, self._min_score,
+            "No confident match (finger_id=%s, score=%d, threshold=%d).",
+            finger_id, score, self._min_score,
         )
         return None
 

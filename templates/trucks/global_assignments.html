@@ -37,7 +37,7 @@
         <label for="end_date">Até</label>
         <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date|default:'' }}">
       </div>
-      <div class="form-group mb-0" style="align-self:flex-end;">
+      <div class="form-group mb-0 align-self-end">
         <button type="submit" class="btn btn--primary">Filtrar</button>
         {% if selected_truck or selected_driver or start_date or end_date %}
           <a href="{% url 'trucks:global_assignments' %}" class="btn btn--outline btn--sm">Limpar</a>
@@ -60,32 +60,7 @@
         <th>Observações</th>
       </tr>
     </thead>
-    <tbody>
-      {% for a in assignments %}
-      <tr>
-        <td><a href="{% url 'trucks:detail' a.truck.pk %}">{{ a.truck.license_plate }} — {{ a.truck.model }}</a></td>
-        <td><a href="{% url 'employees:detail' a.driver.pk %}">{{ a.driver.name }}</a></td>
-        <td>{{ a.assigned_at|date:"d/m/Y H:i" }}</td>
-        <td>
-          {% if a.unassigned_at %}
-            {{ a.unassigned_at|date:"d/m/Y H:i" }}
-          {% else %}
-            —
-          {% endif %}
-        </td>
-        <td>
-          {% if a.unassigned_at %}
-            <span class="badge badge--secondary">Encerrado</span>
-          {% else %}
-            <span class="badge badge--success">Ativo</span>
-          {% endif %}
-        </td>
-        <td class="notes-cell"><textarea class="notes-textarea" readonly>{{ a.notes|default:"" }}</textarea></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+    {% include 'partials/_infinite_scroll_body.html' with rows_template='trucks/_assignment_rows.html' %}
 {% else %}
 <div class="empty-state">
   <p>Nenhuma associação encontrada{% if selected_truck or selected_driver or start_date or end_date %} para o filtro selecionado{% endif %}.</p>

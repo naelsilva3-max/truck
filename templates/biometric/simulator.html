@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>🔬 Simulador Biométrico</h1>
+  <h1>Simulador Biométrico</h1>
   <a href="{% url 'presence_history' %}" class="btn btn--secondary">Ver Histórico IN/OUT</a>
 </div>
 
@@ -13,13 +13,13 @@
 </div>
 
 {% if result %}
-<div class="card mb-3" style="border-left: 4px solid {% if result.is_in %}var(--color-success){% else %}var(--color-error){% endif %};">
+<div class="card mb-3 {% if result.is_in %}card--accent-success{% else %}card--accent-danger{% endif %}">
   <h2>Resultado do Scan</h2>
   <div class="presence-status">
     {% if result.is_in %}
-      <span class="presence-badge presence-badge--in">⬆ ENTRADA — IN</span>
+      <span class="presence-badge presence-badge--in">ENTRADA — IN</span>
     {% else %}
-      <span class="presence-badge presence-badge--out">⬇ SAÍDA — OUT</span>
+      <span class="presence-badge presence-badge--out">SAÍDA — OUT</span>
     {% endif %}
     <strong>{{ result.employee.name }}</strong>
     <span class="text-muted">{{ result.last_ts|date:"d/m/Y H:i:s" }}</span>
@@ -37,7 +37,7 @@
 <div class="card">
   <h2>Funcionários com Biometria Cadastrada</h2>
   {% if enrolled %}
-  <p class="text-muted mb-3" style="font-size:.85rem;">
+  <p class="text-muted mb-3 text-sm">
     Selecione um funcionário e clique em <strong>Simular Scan</strong> para processar um evento biométrico.
     O código exibido é um hash parcial do template (SHA-256), útil para identificação.
   </p>
@@ -59,13 +59,13 @@
             <a href="{% url 'employees:detail' row.employee.pk %}">{{ row.employee.name }}</a>
           </td>
           <td>
-            <code style="font-size:.8rem; background:#f4f6f9; padding:.2em .5em; border-radius:4px;">{{ row.code }}</code>
+            <code>{{ row.code }}</code>
           </td>
           <td>
             {% if row.is_in %}
-              <span class="badge badge--success">⬆ IN</span>
+              <span class="badge badge--success">IN</span>
             {% else %}
-              <span class="badge badge--danger">⬇ OUT</span>
+              <span class="badge badge--danger">OUT</span>
             {% endif %}
           </td>
           <td>
@@ -76,7 +76,7 @@
             {% endif %}
           </td>
           <td>
-            <form method="post" style="display:inline;">
+            <form method="post" class="d-inline">
               {% csrf_token %}
               <input type="hidden" name="employee_pk" value="{{ row.employee.pk }}">
               <button type="submit" class="btn btn--sm {% if row.is_in %}btn--danger{% else %}btn--success{% endif %}">

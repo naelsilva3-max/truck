@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from django.utils import timezone
 
 from attendance.models import AttendanceRecord, PresenceEvent
-from employees.models import BiometricTemplate
+from biometric.models import BiometricTemplate
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -83,6 +83,20 @@ class AttendanceService:
         logger.info("Exit recorded for employee %s at %s.", employee_id, now)
         return record
 
+    def toggle_for_employee(self, employee_id: int) -> AttendanceRecord:
+        """
+        Toggle IN/OUT for an already-identified employee: records an entry if
+        there's no open record, otherwise closes it with an exit.
+
+        Propagates Employee.DoesNotExist and ValueError (inactive employee)
+        raised by record_entry/record_exit's _check_active — callers (e.g. the
+        kiosk scan API view) map these to 4xx responses.
+        """
+        open_record = self.get_open_record(employee_id)
+        if open_record is None:
+            return self.record_entry(employee_id)
+        return self.record_exit(employee_id)
+
     def process_biometric_event(self, template: bytes) -> AttendanceRecord | None:
         bio_service = self._get_biometric_service()
 
@@ -97,11 +111,7 @@ class AttendanceService:
             logger.warning('digital desconhecida')
             return None
 
-        open_record = self.get_open_record(employee_id)
-        if open_record is None:
-            return self.record_entry(employee_id)
-        else:
-            return self.record_exit(employee_id)
+        return self.toggle_for_employee(employee_id)
 
     def list_records(
         self,

@@ -5,99 +5,259 @@
 {% block content %}
 <div class="page-header">
   <h1>{{ title }}</h1>
-  <a href="{% url 'visitors:visit_list' %}" class="btn btn--outline">← Voltar</a>
+  <a href="{% url 'visitors:visit_list' %}" class="btn btn--secondary">← Voltar</a>
 </div>
 
-<form method="post" class="form">
-  {% csrf_token %}
+<div class="form-card">
+  <form method="post" novalidate>
+    {% csrf_token %}
 
-  {% if form.non_field_errors %}
-  <div class="alert alert--error">
-    {% for error in form.non_field_errors %}
-      <p>{{ error }}</p>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  <div class="form-row">
-    <div class="form-group">
-      <label for="{{ form.visitor.id_for_label }}">{{ form.visitor.label }}</label>
-      {{ form.visitor }}
-      {% if form.visitor.errors %}
-        <div class="form-error">{{ form.visitor.errors.0 }}</div>
-      {% endif %}
-      <small class="form-text">
-        Visitante não cadastrado? 
-        <a href="{% url 'visitors:create' %}" target="_blank">Cadastrar novo visitante</a>
-      </small>
-    </div>
-  </div>
-
-  <div class="form-row">
-    <div class="form-group">
-      <label for="{{ form.visit_date.id_for_label }}">{{ form.visit_date.label }}</label>
-      {{ form.visit_date }}
-      {% if form.visit_date.errors %}
-        <div class="form-error">{{ form.visit_date.errors.0 }}</div>
-      {% endif %}
-    </div>
-    <div class="form-group">
-      <label for="{{ form.arrival_time.id_for_label }}">{{ form.arrival_time.label }}</label>
-      {{ form.arrival_time }}
-      {% if form.arrival_time.errors %}
-        <div class="form-error">{{ form.arrival_time.errors.0 }}</div>
-      {% endif %}
-    </div>
-  </div>
-
-  <div class="form-row">
-    <div class="form-group">
-      <label for="{{ form.scheduled_departure_time.id_for_label }}">{{ form.scheduled_departure_time.label }}</label>
-      {{ form.scheduled_departure_time }}
-      {% if form.scheduled_departure_time.errors %}
-        <div class="form-error">{{ form.scheduled_departure_time.errors.0 }}</div>
-      {% endif %}
-      {% if form.scheduled_departure_time.help_text %}
-        <small class="form-text">{{ form.scheduled_departure_time.help_text }}</small>
-      {% endif %}
-    </div>
-    <div class="form-group">
-      <label for="{{ form.responsible.id_for_label }}">{{ form.responsible.label }}</label>
-      {{ form.responsible }}
-      {% if form.responsible.errors %}
-        <div class="form-error">{{ form.responsible.errors.0 }}</div>
-      {% endif %}
-    </div>
-  </div>
-
-  <div class="form-row">
-    <div class="form-group">
-      <div class="form-check">
-        {{ form.id_verified }}
-        <label for="{{ form.id_verified.id_for_label }}">{{ form.id_verified.label }}</label>
+    {% if form.non_field_errors %}
+      <div class="alert alert--danger">
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
       </div>
-      {% if form.id_verified.help_text %}
-        <small class="form-text">{{ form.id_verified.help_text }}</small>
-      {% endif %}
-      {% if form.id_verified.errors %}
-        <div class="form-error">{{ form.id_verified.errors.0 }}</div>
-      {% endif %}
-    </div>
-  </div>
+    {% endif %}
 
-  <div class="form-row">
-    <div class="form-group">
-      <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
-      {{ form.notes }}
-      {% if form.notes.errors %}
-        <div class="form-error">{{ form.notes.errors.0 }}</div>
-      {% endif %}
-    </div>
-  </div>
+    {# ---- Quem: visitante + responsável ---- #}
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Visitante</label>
+        {{ form.visitor }}
 
-  <div class="form-actions">
-    <button type="submit" class="btn btn--primary">{{ action }}</button>
-    <a href="{% url 'visitors:visit_list' %}" class="btn btn--outline">Cancelar</a>
-  </div>
-</form>
+        <div class="visitor-picker" id="visitor-picker">
+          <input type="text" id="visitor-search" class="form-control" placeholder="Digite o nome, telefone ou empresa..." autocomplete="off">
+          <div class="visitor-picker-results" id="visitor-results"></div>
+        </div>
+
+        <div class="visitor-picker-selected d-none" id="visitor-selected">
+          <span class="badge badge--info" id="visitor-selected-name"></span>
+          <button type="button" class="btn-link" id="visitor-change-btn">trocar</button>
+        </div>
+
+        <div class="visitor-quick-create d-none" id="visitor-quick-create">
+          <p class="text-sm text-muted mb-2">Cadastro rápido — dá para completar a ficha (foto, documento) depois em Visitantes.</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Nome <span class="required">*</span></label>
+              <input type="text" id="qc-name" class="form-control">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Telefone</label>
+              <input type="text" id="qc-phone" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Empresa</label>
+            <input type="text" id="qc-company" class="form-control">
+          </div>
+          <div id="qc-error" class="form-error d-none"></div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn--primary btn--sm" id="qc-save-btn">Cadastrar e selecionar</button>
+            <button type="button" class="btn btn--secondary btn--sm" id="qc-cancel-btn">Cancelar</button>
+          </div>
+        </div>
+
+        {% if form.visitor.errors %}<div class="form-error">{% for e in form.visitor.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.responsible.id_for_label }}" class="form-label">{{ form.responsible.label }}</label>
+        {{ form.responsible }}
+        {% if form.responsible.errors %}<div class="form-error">{% for e in form.responsible.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    {# ---- Quando: data + horários ---- #}
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.visit_date.id_for_label }}" class="form-label">{{ form.visit_date.label }}</label>
+        {{ form.visit_date }}
+        {% if form.visit_date.errors %}<div class="form-error">{% for e in form.visit_date.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.arrival_time.id_for_label }}" class="form-label">{{ form.arrival_time.label }}</label>
+        {{ form.arrival_time }}
+        {% if form.arrival_time.errors %}<div class="form-error">{% for e in form.arrival_time.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.scheduled_departure_time.id_for_label }}" class="form-label">{{ form.scheduled_departure_time.label }}</label>
+        {{ form.scheduled_departure_time }}
+        {% if form.scheduled_departure_time.errors %}<div class="form-error">{% for e in form.scheduled_departure_time.errors %}{{ e }}{% endfor %}</div>{% endif %}
+        {% if form.scheduled_departure_time.help_text %}<small class="form-text">{{ form.scheduled_departure_time.help_text }}</small>{% endif %}
+      </div>
+      <div class="form-group form-group--check" style="align-self: end;">
+        <label class="form-check-label">{{ form.id_verified }} {{ form.id_verified.label }}</label>
+        {% if form.id_verified.errors %}<div class="form-error">{% for e in form.id_verified.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.notes.id_for_label }}" class="form-label">{{ form.notes.label }}</label>
+        {{ form.notes }}
+        {% if form.notes.errors %}<div class="form-error">{% for e in form.notes.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ action }}</button>
+      <a href="{% url 'visitors:visit_list' %}" class="btn btn--secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+
+{% if selected_visitor %}
+<script>
+  window._selectedVisitor = {
+    id: {{ selected_visitor.pk }},
+    name: "{{ selected_visitor.name|escapejs }}",
+    company: "{{ selected_visitor.company|escapejs }}"
+  };
+</script>
+{% endif %}
+<script>
+(function () {
+  const SEARCH_URL = '{% url "visitors:api_search" %}';
+  const QUICK_CREATE_URL = '{% url "visitors:api_quick_create" %}';
+
+  const hiddenInput = document.getElementById('id_visitor');
+  const searchInput = document.getElementById('visitor-search');
+  const resultsBox = document.getElementById('visitor-results');
+  const pickerBox = document.getElementById('visitor-picker');
+  const selectedBox = document.getElementById('visitor-selected');
+  const selectedName = document.getElementById('visitor-selected-name');
+  const changeBtn = document.getElementById('visitor-change-btn');
+  const quickCreateBox = document.getElementById('visitor-quick-create');
+  const qcName = document.getElementById('qc-name');
+  const qcPhone = document.getElementById('qc-phone');
+  const qcCompany = document.getElementById('qc-company');
+  const qcError = document.getElementById('qc-error');
+  const qcSaveBtn = document.getElementById('qc-save-btn');
+  const qcCancelBtn = document.getElementById('qc-cancel-btn');
+
+  function getCookie(name) {
+    const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return match ? decodeURIComponent(match[2]) : null;
+  }
+  const csrftoken = getCookie('csrftoken');
+
+  function selectVisitor(v) {
+    hiddenInput.value = v.id;
+    selectedName.textContent = v.company ? (v.name + ' — ' + v.company) : v.name;
+    pickerBox.classList.add('d-none');
+    selectedBox.classList.remove('d-none');
+    quickCreateBox.classList.add('d-none');
+    resultsBox.innerHTML = '';
+    resultsBox.classList.remove('active');
+  }
+
+  function clearSelection() {
+    hiddenInput.value = '';
+    selectedBox.classList.add('d-none');
+    pickerBox.classList.remove('d-none');
+    searchInput.value = '';
+    searchInput.focus();
+  }
+
+  function renderResults(results, query) {
+    resultsBox.innerHTML = '';
+    results.forEach(function (v) {
+      const item = document.createElement('div');
+      item.className = 'visitor-picker-item';
+      item.innerHTML = '<strong></strong>';
+      item.querySelector('strong').textContent = v.name;
+      if (v.company) {
+        const span = document.createElement('span');
+        span.className = 'text-muted text-sm';
+        span.textContent = ' ' + v.company;
+        item.appendChild(span);
+      }
+      item.addEventListener('click', function () { selectVisitor(v); });
+      resultsBox.appendChild(item);
+    });
+
+    const createItem = document.createElement('div');
+    createItem.className = 'visitor-picker-item visitor-picker-item--create';
+    createItem.textContent = '+ Cadastrar "' + query + '" como novo visitante';
+    createItem.addEventListener('click', function () { openQuickCreate(query); });
+    resultsBox.appendChild(createItem);
+
+    resultsBox.classList.add('active');
+  }
+
+  function openQuickCreate(prefillName) {
+    resultsBox.classList.remove('active');
+    quickCreateBox.classList.remove('d-none');
+    qcName.value = prefillName || searchInput.value;
+    qcPhone.value = '';
+    qcCompany.value = '';
+    qcError.classList.add('d-none');
+    qcName.focus();
+  }
+
+  let debounceTimer = null;
+  searchInput.addEventListener('input', function () {
+    const query = searchInput.value.trim();
+    clearTimeout(debounceTimer);
+    if (query.length < 2) {
+      resultsBox.classList.remove('active');
+      return;
+    }
+    debounceTimer = setTimeout(function () {
+      fetch(SEARCH_URL + '?q=' + encodeURIComponent(query))
+        .then(function (r) { return r.json(); })
+        .then(function (data) { renderResults(data.results, query); });
+    }, 250);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!pickerBox.contains(e.target)) {
+      resultsBox.classList.remove('active');
+    }
+  });
+
+  changeBtn.addEventListener('click', clearSelection);
+  qcCancelBtn.addEventListener('click', function () {
+    quickCreateBox.classList.add('d-none');
+  });
+
+  qcSaveBtn.addEventListener('click', function () {
+    const name = qcName.value.trim();
+    if (!name) {
+      qcError.textContent = 'Nome é obrigatório.';
+      qcError.classList.remove('d-none');
+      return;
+    }
+    fetch(QUICK_CREATE_URL, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrftoken,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ name: name, phone: qcPhone.value.trim(), company: qcCompany.value.trim() }),
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (result) {
+        if (result.ok) {
+          selectVisitor(result.data);
+        } else {
+          const errs = result.data.errors || {};
+          const messages = Object.keys(errs).map(function (k) { return errs[k].join(' '); }).join(' ');
+          qcError.textContent = messages || 'Não foi possível cadastrar o visitante.';
+          qcError.classList.remove('d-none');
+        }
+      })
+      .catch(function () {
+        qcError.textContent = 'Erro de conexão. Tente novamente.';
+        qcError.classList.remove('d-none');
+      });
+  });
+
+  if (window._selectedVisitor) {
+    selectVisitor(window._selectedVisitor);
+  }
+})();
+</script>
 {% endblock %}

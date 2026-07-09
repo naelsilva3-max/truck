@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
 from employees.models import Employee
-from trucks.models import Truck, TruckAssignment
+from trucks.models import Truck, TruckAssignment, TruckBrand, TruckModel
 from trucks.views import get_current_driver
 
 
@@ -16,11 +16,17 @@ def make_employee(**kw) -> Employee:
     return Employee.objects.create(**defaults)
 
 
+def make_truck_model(brand_name="Volvo", model_name="FH") -> TruckModel:
+    brand, _ = TruckBrand.objects.get_or_create(name=brand_name)
+    truck_model, _ = TruckModel.objects.get_or_create(brand=brand, name=model_name)
+    return truck_model
+
+
 def make_truck(**kw) -> Truck:
     defaults = dict(
         license_plate="ABC1D23",
-        model="Volvo FH",
-        color="Branco",
+        truck_model=make_truck_model(),
+        color="branca",
         chassis="12345678901234567",
         year=2020,
     )

@@ -1,0 +1,13 @@
+{% for event in events %}
+<tr>
+  <td><a href="{% url 'employees:detail' event.employee.pk %}">{{ event.employee.name }}</a></td>
+  <td>{{ event.timestamp|date:"d/m/Y H:i:s" }}</td>
+  <td>
+    {% if event.direction == 'IN' %}
+      <span class="badge badge--success">Entrada</span>
+    {% else %}
+      <span class="badge badge--danger">Saída</span>
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}

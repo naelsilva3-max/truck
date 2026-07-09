@@ -1,0 +1,27 @@
+{% load static %}
+{% for truck, driver in trucks_with_driver %}
+<tr>
+  <td class="photo-cell">
+    {% if truck.cover_photo_url %}
+      <img src="{{ truck.cover_photo_url }}" alt="{{ truck.license_plate }}" class="photo-thumb photo-thumb--list">
+    {% else %}
+      <img src="{% static 'images/truck_placeholder.png' %}" alt="sem foto" class="photo-thumb photo-thumb--list">
+    {% endif %}
+  </td>
+  <td><a href="{% url 'trucks:detail' truck.pk %}">{{ truck.license_plate }}</a></td>
+  <td>{{ truck.model }}</td>
+  <td>{{ truck.year|default:"—" }}</td>
+  <td>{{ truck.get_color_display }}</td>
+  <td>
+    {% if truck.is_active %}
+      <span class="badge badge--success">Ativo</span>
+    {% else %}
+      <span class="badge badge--danger">Inativo</span>
+    {% endif %}
+  </td>
+  <td>{{ driver.name|default:"—" }}</td>
+  <td class="table-actions">
+    <a href="{% url 'trucks:detail' truck.pk %}" class="btn btn--sm btn--secondary">Ver</a>
+  </td>
+</tr>
+{% endfor %}

@@ -1,0 +1,22 @@
+{% for a in assignments %}
+<tr>
+  <td><a href="{% url 'trucks:detail' a.truck.pk %}">{{ a.truck.license_plate }} — {{ a.truck.model }}</a></td>
+  <td><a href="{% url 'employees:detail' a.driver.pk %}">{{ a.driver.name }}</a></td>
+  <td>{{ a.assigned_at|date:"d/m/Y H:i" }}</td>
+  <td>
+    {% if a.unassigned_at %}
+      {{ a.unassigned_at|date:"d/m/Y H:i" }}
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td>
+    {% if a.unassigned_at %}
+      <span class="badge badge--secondary">Encerrado</span>
+    {% else %}
+      <span class="badge badge--success">Ativo</span>
+    {% endif %}
+  </td>
+  <td class="notes-cell"><textarea class="notes-textarea" readonly>{{ a.notes|default:"" }}</textarea></td>
+</tr>
+{% endfor %}

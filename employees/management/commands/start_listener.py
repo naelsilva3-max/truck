@@ -13,12 +13,11 @@ The command runs indefinitely until SIGINT or SIGTERM is received,
 then performs a graceful shutdown (stop_listener + disconnect).
 """
 import logging
-import signal
-import time
 
 from django.core.management.base import BaseCommand
 
 from attendance.service import AttendanceService
+from biometric.daemon import run_until_shutdown
 from biometric.exceptions import BiometricDeviceNotFoundError
 from biometric.listener import BiometricListener
 from biometric.service import BiometricService
@@ -61,27 +60,18 @@ class Command(BaseCommand):
             port=port,
         )
 
-        # --- Graceful shutdown on SIGINT / SIGTERM ---
-        shutdown = {"requested": False}
+        def _on_shutdown():
+            logger.info("start_listener: shutdown signal received.")
+            self.stdout.write("\nEncerrando listener biométrico...")
 
-        def _shutdown(signum, frame):
-            if not shutdown["requested"]:
-                shutdown["requested"] = True
-                logger.info("start_listener: shutdown signal received (%s).", signum)
-                self.stdout.write("\nEncerrando listener biométrico...")
-                listener.stop_listener()
-                service.disconnect()
-                logger.info("start_listener: shutdown complete.")
-                self.stdout.write(self.style.SUCCESS("Listener encerrado."))
-
-        signal.signal(signal.SIGINT, _shutdown)
-        signal.signal(signal.SIGTERM, _shutdown)
-
-        # --- Start listener ---
-        listener.start_listener(callback=attendance_service.process_biometric_event)
         logger.info("start_listener: listener running. Press Ctrl+C to stop.")
         self.stdout.write(self.style.SUCCESS("Listener em execução. Pressione Ctrl+C para parar."))
 
-        # Keep the main thread alive while the daemon thread runs
-        while not shutdown["requested"]:
-            time.sleep(1.0)
+        run_until_shutdown(
+            listener, service,
+            callback=attendance_service.process_biometric_event,
+            on_shutdown=_on_shutdown,
+        )
+
+        logger.info("start_listener: shutdown complete.")
+        self.stdout.write(self.style.SUCCESS("Listener encerrado."))

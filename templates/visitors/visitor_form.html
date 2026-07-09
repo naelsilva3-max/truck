@@ -1,92 +1,154 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ title }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <h1>{{ title }}</h1>
-  <a href="{% url 'visitors:visit_create' %}" class="btn btn--outline">← Voltar</a>
+  <a href="{% url 'visitors:visit_create' %}" class="btn btn--secondary">← Voltar</a>
 </div>
 
-<form method="post" enctype="multipart/form-data" class="form">
-  {% csrf_token %}
+<div class="form-card">
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
 
-  {% if form.non_field_errors %}
-  <div class="alert alert--error">
-    {% for error in form.non_field_errors %}
-      <p>{{ error }}</p>
-    {% endfor %}
-  </div>
-  {% endif %}
+    {% if form.non_field_errors %}
+      <div class="alert alert--danger">
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
 
-  <div class="form-row">
-    <div class="form-group">
-      <label for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
-      {{ form.name }}
-      {% if form.name.errors %}
-        <div class="form-error">{{ form.name.errors.0 }}</div>
-      {% endif %}
-      {% if form.name.help_text %}
-        <small class="form-text">{{ form.name.help_text }}</small>
-      {% endif %}
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
+        {{ form.name }}
+        {% if form.name.errors %}<div class="form-error">{% for e in form.name.errors %}{{ e }}{% endfor %}</div>{% endif %}
+        {% if form.name.help_text %}<small class="form-text">{{ form.name.help_text }}</small>{% endif %}
+      </div>
     </div>
-  </div>
 
-  <div class="form-row">
-    <div class="form-group">
-      <label for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
-      {{ form.phone }}
-      {% if form.phone.errors %}
-        <div class="form-error">{{ form.phone.errors.0 }}</div>
-      {% endif %}
+    <div class="form-row">
+      <div class="form-group">
+        <label for="{{ form.phone.id_for_label }}" class="form-label">{{ form.phone.label }}</label>
+        {{ form.phone }}
+        {% if form.phone.errors %}<div class="form-error">{% for e in form.phone.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.company.id_for_label }}" class="form-label">{{ form.company.label }}</label>
+        {{ form.company }}
+        {% if form.company.errors %}<div class="form-error">{% for e in form.company.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
     </div>
-    <div class="form-group">
-      <label for="{{ form.company.id_for_label }}">{{ form.company.label }}</label>
-      {{ form.company }}
-      {% if form.company.errors %}
-        <div class="form-error">{{ form.company.errors.0 }}</div>
-      {% endif %}
-    </div>
-  </div>
 
-  <div class="form-row">
-    <div class="form-group">
-      <label for="{{ form.photo.id_for_label }}">{{ form.photo.label }}</label>
-      {{ form.photo }}
-      {% if form.photo.errors %}
-        <div class="form-error">{{ form.photo.errors.0 }}</div>
-      {% endif %}
-      {% if form.photo.help_text %}
-        <small class="form-text">{{ form.photo.help_text }}</small>
-      {% endif %}
-      {% if visitor and visitor.photo %}
-        <div class="mt-2">
-          <img src="{{ visitor.photo.url }}" alt="Foto do rosto" class="photo-thumb" style="max-width: 150px;">
-          <p class="form-text">Foto atual do rosto</p>
+    <div class="form-group form-group--check">
+      <label class="form-check-label">{{ form.is_foreigner }} {{ form.is_foreigner.label }}</label>
+    </div>
+
+    <div class="form-row" id="identity-br-fields">
+      <div class="form-group">
+        <label for="{{ form.rg.id_for_label }}" class="form-label">{{ form.rg.label }} <span class="required">*</span></label>
+        {{ form.rg }}
+        {% if form.rg.errors %}<div class="form-error">{% for e in form.rg.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.cpf.id_for_label }}" class="form-label">{{ form.cpf.label }} <span class="required">*</span></label>
+        {{ form.cpf }}
+        {% if form.cpf.errors %}<div class="form-error">{% for e in form.cpf.errors %}{{ e }}{% endfor %}</div>{% endif %}
+        {% if form.cpf.help_text %}<small class="form-text">{{ form.cpf.help_text }}</small>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-row" id="identity-foreign-fields">
+      <div class="form-group">
+        <label for="{{ form.foreign_document_type.id_for_label }}" class="form-label">{{ form.foreign_document_type.label }} <span class="required">*</span></label>
+        {{ form.foreign_document_type }}
+        {% if form.foreign_document_type.errors %}<div class="form-error">{% for e in form.foreign_document_type.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.foreign_document_number.id_for_label }}" class="form-label">{{ form.foreign_document_number.label }} <span class="required">*</span></label>
+        {{ form.foreign_document_number }}
+        {% if form.foreign_document_number.errors %}<div class="form-error">{% for e in form.foreign_document_number.errors %}{{ e }}{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">{{ form.photo.label }}</label>
+        <div class="camera-capture" data-facing="user">
+          <div class="camera-viewport">
+            <div class="camera-placeholder">Câmera desligada</div>
+            <video class="camera-video" autoplay playsinline muted></video>
+            <img class="camera-snapshot" alt="Foto capturada">
+          </div>
+          <canvas class="camera-canvas" hidden></canvas>
+          <div class="camera-actions">
+            <button type="button" class="btn btn--sm btn--secondary camera-btn-start">Ligar Câmera</button>
+            <button type="button" class="btn btn--sm btn--primary camera-btn-capture">Capturar Foto</button>
+            <button type="button" class="btn btn--sm btn--outline camera-btn-retake">Tirar Outra</button>
+          </div>
+          <p class="camera-error form-error"></p>
+          {{ form.photo }}
         </div>
-      {% endif %}
-    </div>
-    <div class="form-group">
-      <label for="{{ form.document_photo.id_for_label }}">{{ form.document_photo.label }}</label>
-      {{ form.document_photo }}
-      {% if form.document_photo.errors %}
-        <div class="form-error">{{ form.document_photo.errors.0 }}</div>
-      {% endif %}
-      {% if form.document_photo.help_text %}
-        <small class="form-text">{{ form.document_photo.help_text }}</small>
-      {% endif %}
-      {% if visitor and visitor.document_photo %}
-        <div class="mt-2">
-          <img src="{{ visitor.document_photo.url }}" alt="Documento atual" class="photo-thumb" style="max-width: 150px;">
-          <p class="form-text">Documento atual</p>
+        {% if form.photo.errors %}<div class="form-error">{% for e in form.photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
+        {% if form.photo.help_text %}<small class="form-text">{{ form.photo.help_text }}</small>{% endif %}
+        {% if visitor and visitor.photo %}
+          <div class="mt-2">
+            <img src="{{ visitor.photo.url }}" alt="Foto do rosto" class="photo-thumb photo-thumb--150">
+            <p class="form-text">Foto atual do rosto (capture uma nova para substituir)</p>
+          </div>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ form.document_photo.label }}</label>
+        <div class="camera-capture" data-facing="environment">
+          <div class="camera-viewport">
+            <div class="camera-placeholder">Câmera desligada</div>
+            <video class="camera-video" autoplay playsinline muted></video>
+            <img class="camera-snapshot" alt="Documento capturado">
+          </div>
+          <canvas class="camera-canvas" hidden></canvas>
+          <div class="camera-actions">
+            <button type="button" class="btn btn--sm btn--secondary camera-btn-start">Ligar Câmera</button>
+            <button type="button" class="btn btn--sm btn--primary camera-btn-capture">Capturar Foto</button>
+            <button type="button" class="btn btn--sm btn--outline camera-btn-retake">Tirar Outra</button>
+          </div>
+          <p class="camera-error form-error"></p>
+          {{ form.document_photo }}
         </div>
-      {% endif %}
+        {% if form.document_photo.errors %}<div class="form-error">{% for e in form.document_photo.errors %}{{ e }}{% endfor %}</div>{% endif %}
+        {% if form.document_photo.help_text %}<small class="form-text">{{ form.document_photo.help_text }}</small>{% endif %}
+        {% if visitor and visitor.document_photo %}
+          <div class="mt-2">
+            <img src="{{ visitor.document_photo.url }}" alt="Documento atual" class="photo-thumb photo-thumb--150">
+            <p class="form-text">Documento atual (capture uma nova para substituir)</p>
+          </div>
+        {% endif %}
+      </div>
     </div>
-  </div>
 
-  <div class="form-actions">
-    <button type="submit" class="btn btn--primary">{{ action }}</button>
-    <a href="{% url 'visitors:list' %}" class="btn btn--outline">Cancelar</a>
-  </div>
-</form>
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">{{ action }}</button>
+      <a href="{% url 'visitors:list' %}" class="btn btn--secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+<script src="{% static 'js/camera-capture.js' %}"></script>
+<script>
+(function () {
+  var checkbox = document.getElementById('id_is_foreigner');
+  var brFields = document.getElementById('identity-br-fields');
+  var foreignFields = document.getElementById('identity-foreign-fields');
+  if (!checkbox || !brFields || !foreignFields) return;
+
+  function sync() {
+    var isForeigner = checkbox.checked;
+    brFields.style.display = isForeigner ? 'none' : '';
+    foreignFields.style.display = isForeigner ? '' : 'none';
+  }
+
+  checkbox.addEventListener('change', sync);
+  sync();
+})();
+</script>
 {% endblock %}

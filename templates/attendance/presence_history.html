@@ -14,7 +14,7 @@
 
 <div class="card">
   <div class="card-body">
-    <form method="get" class="form form--inline">
+    <form method="get">
       <div class="form-row">
         <div class="form-group">
           <label for="employee">Funcionário</label>
@@ -33,7 +33,7 @@
           <label for="end_date">Data Fim</label>
           <input type="date" name="end_date" id="end_date" class="form-control" value="{{ end_date|date:'Y-m-d'|default:'' }}">
         </div>
-        <div class="form-group" style="align-self: flex-end;">
+        <div class="form-group align-self-end">
           <input type="hidden" name="type" value="{{ filter_type }}">
           <button type="submit" class="btn btn--primary">Filtrar</button>
         </div>
@@ -54,48 +54,7 @@
         <th>Detalhes</th>
       </tr>
     </thead>
-    <tbody>
-      {% for event in events %}
-      <tr>
-        <td>
-          {% if event.type == 'employee' %}
-            <span class="badge badge--info">Funcionário</span>
-          {% else %}
-            <span class="badge badge--secondary">Visitante</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if event.type == 'employee' %}
-            <a href="{% url 'employees:detail' event.employee.pk %}">{{ event.employee_name }}</a>
-          {% else %}
-            {{ event.visitor_name }}
-            {% if event.company %}
-              <br><small>{{ event.company }}</small>
-            {% endif %}
-          {% endif %}
-        </td>
-        <td>{{ event.timestamp|date:"d/m/Y H:i:s" }}</td>
-        <td>
-          {% if event.direction == 'IN' or event.direction == 'Entrada' %}
-            <span class="badge badge--success">Entrada</span>
-          {% else %}
-            <span class="badge badge--danger">Saída</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if event.type == 'employee' %}
-            {% if event.attendance_record %}
-              <span class="badge badge--info">Ponto</span>
-            {% endif %}
-          {% else %}
-            <a href="{% url 'visitors:visit_detail' event.visit_pk %}" class="btn btn--sm btn--secondary">Ver Visita</a>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+    {% include 'partials/_infinite_scroll_body.html' with rows_template='attendance/_presence_rows.html' %}
 {% else %}
 <div class="empty-state">
   <p>Nenhum registro encontrado.</p>

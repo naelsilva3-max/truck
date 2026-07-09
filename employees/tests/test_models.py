@@ -1,10 +1,10 @@
-"""Unit tests for Employee and BiometricTemplate models (tasks 9.1 and 9.2)."""
+"""Unit tests for the Employee model (task 9.1)."""
 import pytest
 from datetime import date, timedelta
 
 from django.core.exceptions import ValidationError
 
-from employees.models import BiometricTemplate, Employee
+from employees.models import Employee
 
 
 # ---------------------------------------------------------------------------
@@ -63,13 +63,15 @@ class TestEmployeeModel:
         assert AttendanceRecord.objects.filter(employee=emp).count() == count_before
 
     def test_deactivate_preserves_truck_assignments(self):
-        from trucks.models import Truck, TruckAssignment
+        from trucks.models import Truck, TruckAssignment, TruckBrand, TruckModel
 
         emp = make_employee(is_driver=True)
+        brand, _ = TruckBrand.objects.get_or_create(name="Volvo")
+        truck_model, _ = TruckModel.objects.get_or_create(brand=brand, name="FH")
         truck = Truck.objects.create(
             license_plate="ABC1234",
-            model="Volvo FH",
-            color="Branco",
+            truck_model=truck_model,
+            color="branca",
             chassis="12345678901234567",
             year=2020,
         )
@@ -79,39 +81,3 @@ class TestEmployeeModel:
         Employee.objects.filter(pk=emp.pk).update(is_active=False)
 
         assert TruckAssignment.objects.filter(driver=emp).count() == count_before
-
-
-# ---------------------------------------------------------------------------
-# 9.2 BiometricTemplate model validation
-# ---------------------------------------------------------------------------
-
-@pytest.mark.django_db
-class TestBiometricTemplateModel:
-
-    def test_zero_bytes_raises(self):
-        emp = make_employee()
-        with pytest.raises(ValidationError):
-            BiometricTemplate.objects.create(employee=emp, template=b"")
-
-    def test_over_10kb_raises(self):
-        emp = make_employee()
-        with pytest.raises(ValidationError):
-            BiometricTemplate.objects.create(employee=emp, template=b"x" * 10_241)
-
-    def test_valid_template_is_saved(self):
-        emp = make_employee()
-        bt = BiometricTemplate.objects.create(employee=emp, template=b"x" * 512)
-        assert bt.pk is not None
-
-    def test_reenroll_replaces_existing_template(self):
-        emp = make_employee()
-        BiometricTemplate.objects.create(employee=emp, template=b"old" * 10)
-        # upsert: replace via get_or_create pattern used in enrollment view
-        bt, created = BiometricTemplate.objects.get_or_create(
-            employee=emp, defaults={"template": b"new" * 10}
-        )
-        if not created:
-            bt.template = b"new" * 10
-            bt.save()
-        assert BiometricTemplate.objects.filter(employee=emp).count() == 1
-        assert bytes(BiometricTemplate.objects.get(employee=emp).template) == b"new" * 10

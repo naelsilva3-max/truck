@@ -1,0 +1,9 @@
+Olá, {{ user.username }},
+
+Sua conta foi cadastrada no sistema de Controle de Funcionários e Caminhões.
+
+Para confirmar seu email e poder usar a recuperação de senha, acesse o link abaixo:
+
+{{ verify_url }}
+
+Se você não reconhece este cadastro, ignore este email.

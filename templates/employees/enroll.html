@@ -22,9 +22,9 @@
       <dt>Status Biométrico</dt>
       <dd>
         {% if has_biometric %}
-          <span class="badge badge--success">✔ Biometria já cadastrada</span>
+          <span class="badge badge--success">Biometria já cadastrada</span>
         {% else %}
-          <span class="badge badge--warning">✗ Sem biometria cadastrada</span>
+          <span class="badge badge--warning">Sem biometria cadastrada</span>
         {% endif %}
       </dd>
     </div>
@@ -38,10 +38,11 @@
     <h3>Instruções</h3>
     <ol>
       <li>Certifique-se de que o leitor biométrico ZKTeco ZK9500 está <strong>conectado</strong> ao computador.</li>
-      <li>Posicione o dedo indicador direito do funcionário <strong>no centro do leitor</strong>.</li>
-      <li>Mantenha o dedo apoiado com firmeza até que o leitor emita um sinal sonoro.</li>
       <li>Clique no botão abaixo para iniciar a captura.</li>
+      <li>Posicione o dedo indicador direito do funcionário <strong>no centro do leitor</strong> e mantenha-o apoiado com firmeza.</li>
+      <li>Serão feitas <strong>3 leituras</strong> do mesmo dedo: quando o leitor capturar, <strong>levante o dedo e reposicione-o</strong>. Repita até concluir as 3 leituras.</li>
     </ol>
+    <p class="text-muted"><small>As 3 leituras são combinadas em um único template, o que torna o reconhecimento mais confiável.</small></p>
     {% if has_biometric %}
       <div class="alert alert--warning">
         <strong>Atenção:</strong> O template biométrico atual será substituído pelo novo após a captura bem-sucedida.
@@ -53,7 +54,7 @@
     {% csrf_token %}
     <div class="form-actions">
       <button type="submit" class="btn btn--primary">
-        &#x1F4F7; Iniciar Captura de Biometria
+        Iniciar Captura de Biometria
       </button>
       <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--secondary">Cancelar</a>
     </div>

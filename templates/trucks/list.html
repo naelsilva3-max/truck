@@ -6,10 +6,19 @@
 <div class="page-header">
   <h1>Caminhões</h1>
   <div class="d-flex gap-2">
-    <a href="{% url 'trucks:report_pdf' %}" class="btn btn--outline" target="_blank">📄 Relatório PDF</a>
+    {% if can_edit %}
     <a href="{% url 'trucks:create' %}" class="btn btn--primary">+ Novo Caminhão</a>
+    {% endif %}
   </div>
 </div>
+
+<form method="get" action="{% url 'trucks:list' %}" class="search-bar mb-3">
+  <input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Buscar por placa, modelo, marca, chassi, cor, ano...">
+  <button type="submit" class="btn btn--primary">Buscar</button>
+  {% if query %}
+  <a href="{% url 'trucks:list' %}" class="btn btn--outline">Limpar</a>
+  {% endif %}
+</form>
 
 {% if trucks_with_driver %}
 <div class="table-responsive">
@@ -19,47 +28,20 @@
         <th></th>
         <th>Placa</th>
         <th>Modelo</th>
+        <th>Ano</th>
         <th>Cor</th>
         <th>Status</th>
         <th>Motorista Atual</th>
         <th>Ações</th>
       </tr>
     </thead>
-    <tbody>
-      {% for truck, driver in trucks_with_driver %}
-      <tr>
-        <td class="photo-cell">
-          {% load static %}
-          {% if truck.photo %}
-            <img src="{{ truck.photo.url }}" alt="{{ truck.license_plate }}" class="photo-thumb photo-thumb--list">
-          {% else %}
-            <img src="{% static 'images/truck_placeholder.png' %}" alt="sem foto" class="photo-thumb photo-thumb--list">
-          {% endif %}
-        </td>
-        <td><a href="{% url 'trucks:detail' truck.pk %}">{{ truck.license_plate }}</a></td>
-        <td>{{ truck.model }}</td>
-        <td>{{ truck.get_color_display }}</td>
-        <td>
-          {% if truck.is_active %}
-            <span class="badge badge--success">Ativo</span>
-          {% else %}
-            <span class="badge badge--danger">Inativo</span>
-          {% endif %}
-        </td>
-        <td>{{ driver.name|default:"—" }}</td>
-        <td class="table-actions">
-          <a href="{% url 'trucks:detail' truck.pk %}" class="btn btn--sm btn--secondary">Ver</a>
-          <a href="{% url 'trucks:update' truck.pk %}" class="btn btn--sm btn--primary">Editar</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+    {% include 'partials/_infinite_scroll_body.html' with rows_template='trucks/_rows.html' %}
 {% else %}
 <div class="empty-state">
   <p>Nenhum caminhão cadastrado ainda.</p>
+  {% if can_edit %}
   <a href="{% url 'trucks:create' %}" class="btn btn--primary">Cadastrar primeiro caminhão</a>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

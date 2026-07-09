@@ -111,6 +111,10 @@ class BiometricListener:
         self._callback: Callable[[bytes], None] | None = None
         self._stop_event: threading.Event = threading.Event()
         self._thread: threading.Thread | None = None
+        # Debounce: "armed" means we may deliver the next fingerprint.  After
+        # an event is delivered we disarm until the sensor reports no finger
+        # (i.e. the finger is lifted), so a single press yields a single event.
+        self._armed: bool = True
 
     # ------------------------------------------------------------------
     # Public API
@@ -200,10 +204,15 @@ class BiometricListener:
         """
         logger.debug("BiometricListener loop starting.")
 
+        # Start armed so the first press is delivered.
+        self._armed = True
+
         while not self._stop_event.is_set():
             if not self._service.is_connected:
                 # Device is not connected — try to reconnect.
                 self._reconnect_with_backoff()
+                # After a (re)connection, re-arm so the next press is delivered.
+                self._armed = True
                 # If still not connected after backoff exhausted the attempts
                 # before stop was set, loop again (which will check stop_event).
                 continue
@@ -236,7 +245,22 @@ class BiometricListener:
                 time.sleep(self._poll_interval)
                 continue
 
-            # Invoke the user callback with the captured template.
+            if not template:
+                # No finger on the sensor — the finger was lifted (or never
+                # present), so re-arm for the next press.
+                self._armed = True
+                time.sleep(self._poll_interval)
+                continue
+
+            if not self._armed:
+                # A finger is still resting on the sensor from the previous
+                # event; ignore repeated reads until it is lifted (debounce).
+                time.sleep(self._poll_interval)
+                continue
+
+            # Deliver exactly one event per press, then disarm until release.
+            self._armed = False
+
             if self._callback is not None:
                 try:
                     self._callback(template)

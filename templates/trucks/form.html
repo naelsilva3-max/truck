@@ -69,41 +69,33 @@
       <label class="form-check-label">{{ form.is_active }} {{ form.is_active.label }}</label>
     </div>
 
-    <!-- Fotos existentes (edição) -->
-    {% if existing_photos %}
     <div class="form-group">
-      <label class="form-label">Fotos atuais <small class="form-help" style="display:inline;">(marque para remover)</small></label>
-      <div class="photo-upload-grid" id="existing-grid">
-        {% for photo in existing_photos %}
-        <div class="photo-upload-item" id="existing-{{ photo.pk }}">
-          <img src="{{ photo.image.url }}" alt="Foto {{ forloop.counter }}">
-          <label class="photo-remove-label">
-            <input type="checkbox" name="delete_photos" value="{{ photo.pk }}" class="photo-delete-cb" onchange="updateDeleteVisual(this)">
-            <span class="photo-remove-icon">✕ Remover</span>
+      <label for="{{ form.notes.id_for_label }}" class="form-label">{{ form.notes.label }}</label>
+      {{ form.notes }}
+      {% if form.notes.errors %}<div class="form-error">{% for e in form.notes.errors %}{{ e }}{% endfor %}</div>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="id_photos" class="form-label">Fotos do Caminhão</label>
+      <input type="file" name="photos" id="id_photos" class="form-control" multiple accept="image/*">
+      <small class="form-help">Selecione uma ou mais fotos. Elas serão exibidas em slides na página do caminhão.</small>
+    </div>
+
+    {% if truck and truck.photos.all %}
+    <div class="form-group">
+      <label class="form-label">Fotos Atuais</label>
+      <div class="truck-photo-manage-grid">
+        {% for photo in truck.photos.all %}
+        <div class="truck-photo-manage-item">
+          <img src="{{ photo.image.url }}" alt="Foto {{ forloop.counter }}" class="truck-photo-manage-thumb">
+          <label class="truck-photo-manage-remove">
+            <input type="checkbox" name="delete_photos" value="{{ photo.pk }}"> Remover
           </label>
         </div>
         {% endfor %}
       </div>
     </div>
     {% endif %}
-
-    <!-- Upload de novas fotos -->
-    <div class="form-group">
-      <label class="form-label">
-        {% if existing_photos %}Adicionar fotos{% else %}Fotos <span class="required">*</span>{% endif %}
-        <small class="form-help" style="display:inline;">Mínimo {{ min_photos }}, máximo {{ max_photos }} no total.</small>
-      </label>
-      <div class="photo-dropzone" id="dropzone" onclick="document.getElementById('photo-input').click()">
-        <div class="photo-dropzone-inner">
-          <span class="photo-dropzone-icon">📷</span>
-          <span class="photo-dropzone-text">Clique ou arraste fotos aqui</span>
-          <span class="photo-dropzone-hint">JPG, PNG, WEBP — múltiplas permitidas</span>
-        </div>
-        <input type="file" id="photo-input" name="photos" multiple accept="image/*" style="display:none;" onchange="handlePhotoSelect(this)">
-      </div>
-      <div class="photo-upload-grid" id="new-photos-grid"></div>
-      <div id="photo-count-msg" class="form-help" style="margin-top:.4rem;"></div>
-    </div>
 
     <div class="form-actions">
       <button type="submit" class="btn btn--primary">{{ action }}</button>
@@ -113,10 +105,6 @@
 </div>
 
 <script>
-const MIN_PHOTOS = {{ min_photos }};
-const MAX_PHOTOS = {{ max_photos }};
-let selectedFiles = [];
-
 // --- Filtro marca → modelo ---
 const brandSelect = document.getElementById('id_brand');
 const modelSelect = document.getElementById('id_truck_model');
@@ -145,78 +133,5 @@ brandSelect.addEventListener('change', () => loadModels(brandSelect.value, null)
 
 // Na edição, carregar modelos da marca já selecionada
 if (brandSelect.value) loadModels(brandSelect.value, preselectedModel);
-
-
-function handlePhotoSelect(input) {
-  const newFiles = Array.from(input.files);
-  selectedFiles = [...selectedFiles, ...newFiles];
-  rebuildFileInput();
-  renderNewPreviews();
-  updateCount();
-}
-
-function rebuildFileInput() {
-  const input = document.getElementById('photo-input');
-  const dt = new DataTransfer();
-  selectedFiles.forEach(f => dt.items.add(f));
-  input.files = dt.files;
-}
-
-function renderNewPreviews() {
-  const grid = document.getElementById('new-photos-grid');
-  grid.innerHTML = '';
-  selectedFiles.forEach((file, idx) => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const item = document.createElement('div');
-      item.className = 'photo-upload-item';
-      item.innerHTML = `
-        <img src="${e.target.result}" alt="${file.name}">
-        <button type="button" class="photo-remove-btn" onclick="removeNewPhoto(${idx})">✕</button>
-        <span class="photo-upload-name">${file.name}</span>`;
-      grid.appendChild(item);
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function removeNewPhoto(idx) {
-  selectedFiles.splice(idx, 1);
-  rebuildFileInput();
-  renderNewPreviews();
-  updateCount();
-}
-
-function updateDeleteVisual(cb) {
-  const item = document.getElementById('existing-' + cb.value.split('_').pop()) ||
-               cb.closest('.photo-upload-item');
-  if (item) item.classList.toggle('photo-marked-delete', cb.checked);
-  updateCount();
-}
-
-function updateCount() {
-  const existingTotal = document.querySelectorAll('.photo-delete-cb').length;
-  const markedDelete = document.querySelectorAll('.photo-delete-cb:checked').length;
-  const remaining = existingTotal - markedDelete + selectedFiles.length;
-  const msg = document.getElementById('photo-count-msg');
-  msg.textContent = `Total após salvar: ${remaining} foto(s). Mínimo: ${MIN_PHOTOS}, máximo: ${MAX_PHOTOS}.`;
-  msg.style.color = (remaining < MIN_PHOTOS || remaining > MAX_PHOTOS) ? 'var(--color-error)' : 'var(--color-muted)';
-}
-
-// Drag and drop
-const dz = document.getElementById('dropzone');
-dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
-dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-dz.addEventListener('drop', e => {
-  e.preventDefault();
-  dz.classList.remove('dragover');
-  const newFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-  selectedFiles = [...selectedFiles, ...newFiles];
-  rebuildFileInput();
-  renderNewPreviews();
-  updateCount();
-});
-
-updateCount();
 </script>
 {% endblock %}

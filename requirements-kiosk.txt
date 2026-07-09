@@ -1,0 +1,10 @@
+# Dependencias apenas da maquina do quiosque (onde o leitor ZK9500 fica
+# conectado). NAO instala Django nem driver de banco de dados — o
+# kiosk_agent.py fala com o servidor central via HTTP, nao acessa o banco
+# diretamente.
+#
+# Requer tambem o driver/SDK ZKFinger da ZKTeco instalado no sistema
+# operacional da maquina do quiosque (nivel de sistema, fora do pip).
+requests==2.34.2
+python-dotenv==1.2.2
+pyzkfp==0.1.5

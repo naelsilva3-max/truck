@@ -1,0 +1,26 @@
+{% for log in logs %}
+<tr>
+  <td class="text-nowrap">{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
+  <td>{{ log.username }}</td>
+  <td>
+    {% if log.action == 'create' %}
+      <span class="badge badge--success">Criação</span>
+    {% elif log.action == 'update' %}
+      <span class="badge badge--info">Atualização</span>
+    {% elif log.action == 'delete' %}
+      <span class="badge badge--danger">Exclusão</span>
+    {% elif log.action == 'pdf' %}
+      <span class="badge badge--secondary">PDF</span>
+    {% elif log.action == 'login' %}
+      <span class="badge badge--warning">Login</span>
+    {% elif log.action == 'logout' %}
+      <span class="badge badge--secondary">Logout</span>
+    {% else %}
+      <span class="badge badge--secondary">{{ log.get_action_display }}</span>
+    {% endif %}
+  </td>
+  <td>{{ log.description }}</td>
+</tr>
+{% empty %}
+<tr><td colspan="4" class="table-empty-cell">Nenhum registro encontrado.</td></tr>
+{% endfor %}

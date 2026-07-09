@@ -10,18 +10,18 @@
 
 <div class="card mb-3">
   <form method="get">
-    <div class="d-flex align-center gap-3" style="flex-wrap: wrap;">
-      <div class="form-group mb-0" style="min-width: 180px;">
+    <div class="filter-row">
+      <div class="form-group mb-0">
         <label for="start_date">Data início</label>
         <input type="date" id="start_date" name="start_date" class="form-control"
                value="{{ start_date|default:'' }}">
       </div>
-      <div class="form-group mb-0" style="min-width: 180px;">
+      <div class="form-group mb-0">
         <label for="end_date">Data fim</label>
         <input type="date" id="end_date" name="end_date" class="form-control"
                value="{{ end_date|default:'' }}">
       </div>
-      <div class="form-group mb-0" style="align-self: flex-end;">
+      <div class="form-group mb-0 align-self-end">
         <button type="submit" class="btn btn--primary">Filtrar</button>
         {% if start_date or end_date %}
           <a href="{% url 'attendance:list' employee.pk %}" class="btn btn--outline btn--sm">Limpar filtro</a>
@@ -32,8 +32,8 @@
 </div>
 
 {% if records %}
-<div class="table-wrapper">
-  <table>
+<div class="table-responsive">
+  <table class="table">
     <thead>
       <tr>
         <th>Data</th>

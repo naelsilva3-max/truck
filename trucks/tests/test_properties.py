@@ -11,12 +11,13 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from django.utils import timezone
 
-from employees.models import BiometricTemplate, Employee
+from employees.models import Employee
 from attendance.models import AttendanceRecord
 from attendance.service import AttendanceService
 from biometric.listener import BiometricListener
+from biometric.models import BiometricTemplate
 from biometric.service import BiometricService, UnavailableBackend
-from trucks.models import Truck, TruckAssignment
+from trucks.models import Truck, TruckAssignment, TruckBrand, TruckColor, TruckModel
 from trucks.views import get_current_driver
 
 # ---------------------------------------------------------------------------
@@ -37,7 +38,7 @@ valid_plate_old = st.from_regex(r"^[A-Z]{3}[0-9]{4}$", fullmatch=True)
 valid_plate = st.one_of(valid_plate_mercosul, valid_plate_old)
 valid_chassis = st.from_regex(r"^[A-Z0-9]{17}$", fullmatch=True)
 valid_model = st.text(min_size=1, max_size=100).filter(lambda s: s.strip())
-valid_color = st.text(min_size=1, max_size=50).filter(lambda s: s.strip())
+valid_color = st.sampled_from([c.value for c in TruckColor])
 valid_year = st.integers(min_value=1900, max_value=date.today().year)
 
 _counter = [0]
@@ -46,6 +47,12 @@ _counter = [0]
 def unique_suffix():
     _counter[0] += 1
     return _counter[0]
+
+
+def make_truck_model(model_name=None):
+    suffix = unique_suffix()
+    brand = TruckBrand.objects.create(name=f"Brand{suffix}")
+    return TruckModel.objects.create(brand=brand, name=model_name or f"Model{suffix}")
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +249,12 @@ def test_exit_time_always_after_entry_time(n):
 def test_listener_resilience(pattern):
     import threading
 
-    events = [b"data" if p == "ok" else RuntimeError for p in pattern]
+    # A None after every read simulates the finger being lifted, which re-arms
+    # the listener's debounce so each "ok" is delivered as a distinct press.
+    events = []
+    for p in pattern:
+        events.append(b"data" if p == "ok" else RuntimeError)
+        events.append(None)
     expected_ok = sum(1 for p in pattern if p == "ok")
 
     collected = []
@@ -306,11 +318,12 @@ def test_listener_resilience(pattern):
 def test_truck_round_trip(plate, chassis, model, color, year):
     # Ensure uniqueness per example
     plate = plate + str(unique_suffix())[:0]  # already unique via DB constraint skip
+    truck_model = make_truck_model(model_name=model)
     try:
         truck = Truck.objects.create(
             license_plate=plate,
             chassis=chassis,
-            model=model,
+            truck_model=truck_model,
             color=color,
             year=year,
         )
@@ -319,7 +332,9 @@ def test_truck_round_trip(plate, chassis, model, color, year):
         return
     fetched = Truck.objects.get(pk=truck.pk)
     assert fetched.license_plate == plate.upper()
-    assert fetched.model == model
+    # `model` is a legacy, auto-derived display field — it mirrors truck_model, not a stored input.
+    assert fetched.model == str(truck_model)
+    assert fetched.truck_model_id == truck_model.pk
     assert fetched.year == year
 
 
@@ -337,10 +352,11 @@ def test_truck_unique_plate_rejects_duplicate(plate, chassis):
     suffix = unique_suffix()
     c1 = f"A{suffix:016d}"[:17]
     c2 = f"B{suffix:016d}"[:17]
+    truck_model = make_truck_model()
     try:
         Truck.objects.create(
             license_plate=plate, chassis=c1,
-            model="M", color="C", year=2000,
+            truck_model=truck_model, color="branca", year=2000,
         )
     except Exception:
         assume(False)
@@ -348,7 +364,7 @@ def test_truck_unique_plate_rejects_duplicate(plate, chassis):
     with pytest.raises((ValidationError, IntegrityError)):
         Truck.objects.create(
             license_plate=plate, chassis=c2,
-            model="M", color="C", year=2000,
+            truck_model=truck_model, color="branca", year=2000,
         )
 
 
@@ -369,7 +385,7 @@ def test_invalid_plate_rejected(plate):
         Truck.objects.create(
             license_plate=plate,
             chassis=f"VALID{unique_suffix():012d}"[:17],
-            model="M", color="C",
+            truck_model=make_truck_model(), color="branca",
         )
     assert Truck.objects.count() == count_before
 
@@ -383,14 +399,18 @@ def test_invalid_plate_rejected(plate):
 @settings(max_examples=20, deadline=None)
 def test_invalid_chassis_rejected(chassis):
     import re
-    assume(not re.match(r"^[A-Z0-9]{17}$", chassis))
+    # Truck.save() uppercases chassis before validating, so a chassis that only
+    # "looks" invalid due to lowercase letters (e.g. differs from a valid one
+    # only by case) would actually be accepted — assume() must check the same
+    # normalized form the model checks, not the raw generated string.
+    assume(not re.match(r"^[A-Z0-9]{17}$", chassis.upper()))
     from django.core.exceptions import ValidationError
     count_before = Truck.objects.count()
     with pytest.raises(ValidationError):
         Truck.objects.create(
             license_plate=f"ABC{unique_suffix() % 10}D{unique_suffix() % 10:02d}"[:7],
             chassis=chassis,
-            model="M", color="C",
+            truck_model=make_truck_model(), color="branca",
         )
     assert Truck.objects.count() == count_before
 
@@ -412,7 +432,7 @@ def test_only_drivers_can_be_assigned(dummy):
     truck = Truck.objects.create(
         license_plate=f"AAA{suffix % 10}B{suffix % 100:02d}"[:7],
         chassis=f"{suffix:017d}"[:17],
-        model="M", color="C",
+        truck_model=make_truck_model(), color="branca",
     )
     count_before = TruckAssignment.objects.count()
     with pytest.raises(ValidationError):
@@ -432,7 +452,7 @@ def test_at_most_one_active_assignment(n_ops):
     truck = Truck.objects.create(
         license_plate=f"BBB{suffix % 10}C{suffix % 100:02d}"[:7],
         chassis=f"T{suffix:016d}"[:17],
-        model="M", color="C",
+        truck_model=make_truck_model(), color="branca",
     )
 
     for i in range(n_ops):
@@ -473,7 +493,7 @@ def test_assignment_temporal_invariant(delta_seconds):
     truck = Truck.objects.create(
         license_plate=f"CCC{suffix % 10}D{suffix % 100:02d}"[:7],
         chassis=f"U{suffix:016d}"[:17],
-        model="M", color="C",
+        truck_model=make_truck_model(), color="branca",
     )
     now = timezone.now()
     a = TruckAssignment.objects.create(
@@ -498,7 +518,7 @@ def test_get_current_driver_consistent(has_active):
     truck = Truck.objects.create(
         license_plate=f"DDD{suffix % 10}E{suffix % 100:02d}"[:7],
         chassis=f"V{suffix:016d}"[:17],
-        model="M", color="C",
+        truck_model=make_truck_model(), color="branca",
     )
     if has_active:
         driver = Employee.objects.create(
@@ -569,7 +589,7 @@ def test_truck_assignment_no_physical_delete(dummy):
     truck = Truck.objects.create(
         license_plate=f"EEE{suffix % 10}F{suffix % 100:02d}"[:7],
         chassis=f"W{suffix:016d}"[:17],
-        model="M", color="C",
+        truck_model=make_truck_model(), color="branca",
     )
     assignment = TruckAssignment.objects.create(truck=truck, driver=driver)
     with pytest.raises(PermissionError):

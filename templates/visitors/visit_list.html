@@ -6,93 +6,49 @@
 <div class="page-header">
   <h1>Registro de Visitas</h1>
   <div class="d-flex gap-2">
-    <a href="{% url 'visitors:visit_list' %}?filter=all" class="btn btn--sm {% if filter_type == 'all' %}btn--primary{% else %}btn--outline{% endif %}">Todas ({{ active_count|add:completed_count }})</a>
-    <a href="{% url 'visitors:visit_list' %}?filter=active" class="btn btn--sm {% if filter_type == 'active' %}btn--primary{% else %}btn--outline{% endif %}">Em visita ({{ active_count }})</a>
-    <a href="{% url 'visitors:visit_list' %}?filter=completed" class="btn btn--sm {% if filter_type == 'completed' %}btn--primary{% else %}btn--outline{% endif %}">Finalizadas ({{ completed_count }})</a>
+    <a href="{% url 'presence_history' %}?type=visitors" class="btn btn--outline">Histórico de Visitas</a>
     {% if can_edit %}
-    <a href="{% url 'visitors:visit_create' %}" class="btn btn--primary">+ Nova Visita</a>
-    <a href="{% url 'visitors:list' %}" class="btn btn--primary">Visitantes</a>
-    <a href="{% url 'visitors:create' %}" class="btn btn--primary">+ Novo Visitante</a>
+      <a href="{% url 'visitors:list' %}" class="btn btn--outline">Visitantes</a>
+      <a href="{% url 'visitors:visit_create' %}" class="btn btn--primary">+ Nova Visita</a>
     {% endif %}
   </div>
 </div>
+
+<div class="tab-bar">
+  <a href="{% url 'visitors:visit_list' %}?filter=active{% if query %}&q={{ query|urlencode }}{% endif %}" class="tab-bar-item {% if filter_type == 'active' %}active{% endif %}">Em visita ({{ active_count }})</a>
+  <a href="{% url 'visitors:visit_list' %}?filter=all{% if query %}&q={{ query|urlencode }}{% endif %}" class="tab-bar-item {% if filter_type == 'all' %}active{% endif %}">Todas ({{ active_count|add:completed_count }})</a>
+  <a href="{% url 'visitors:visit_list' %}?filter=completed{% if query %}&q={{ query|urlencode }}{% endif %}" class="tab-bar-item {% if filter_type == 'completed' %}active{% endif %}">Finalizadas ({{ completed_count }})</a>
+</div>
+
+<form method="get" action="{% url 'visitors:visit_list' %}" class="search-bar mb-3">
+  <input type="hidden" name="filter" value="{{ filter_type }}">
+  <input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Buscar por visitante, empresa, telefone, RG, CPF, responsável, observações...">
+  <button type="submit" class="btn btn--primary">Buscar</button>
+  {% if query %}
+  <a href="{% url 'visitors:visit_list' %}?filter={{ filter_type }}" class="btn btn--outline">Limpar</a>
+  {% endif %}
+</form>
 
 {% if visits %}
 <div class="table-responsive">
   <table class="table">
     <thead>
       <tr>
-        <th>Visitante</th>
+        <th class="col-visitor-name">Visitante</th>
         <th>Data</th>
         <th>Chegada</th>
         <th>Partida Prevista</th>
         <th>Partida Real</th>
         <th>Responsável</th>
         <th>Status</th>
-        <th>Ações</th>
+        <th class="col-visit-actions">Ações</th>
       </tr>
     </thead>
-    <tbody>
-      {% for visit in visits %}
-      <tr{% if visit.is_active %} class="row-active"{% else %} class="row-completed"{% endif %}>
-        <td>
-          <a href="{% url 'visitors:visit_detail' visit.pk %}">{{ visit.visitor.name }}</a>
-          {% if visit.visitor.company %}
-            <br><small>{{ visit.visitor.company }}</small>
-          {% endif %}
-        </td>
-        <td>{{ visit.visit_date|date:"d/m/Y" }}</td>
-        <td>{{ visit.arrival_time|time:"H:i" }}</td>
-        <td>{{ visit.scheduled_departure_time|time:"H:i" }}</td>
-        <td>
-          {% if visit.actual_departure_time %}
-            {{ visit.actual_departure_time|time:"H:i" }}
-          {% else %}
-            <span class="badge badge--warning">—</span>
-          {% endif %}
-        </td>
-        <td>{{ visit.responsible.name }}</td>
-        <td>
-          {% if visit.is_active %}
-            <span class="badge badge--success">Em visita</span>
-          {% else %}
-            <span class="badge badge--secondary">Finalizada</span>
-          {% endif %}
-        </td>
-        <td class="table-actions">
-          <a href="{% url 'visitors:visit_detail' visit.pk %}" class="btn btn--sm btn--secondary">Detalhes</a>
-          <a href="{% url 'visitors:visit_badge' visit.pk %}" class="btn btn--sm btn--primary" target="_blank">Crachá PDF</a>
-          {% if visit.is_active and can_edit %}
-          <form method="post" action="{% url 'visitors:visit_depart' visit.pk %}" style="display:inline;">
-            {% csrf_token %}
-            <button type="submit" class="btn btn--sm btn--danger">Registrar Saída</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+    {% include 'partials/_infinite_scroll_body.html' with rows_template='visitors/_visit_rows.html' %}
 {% else %}
 <div class="empty-state">
   <p>Nenhuma visita registrada.</p>
   <a href="{% url 'visitors:visit_create' %}" class="btn btn--primary">Registrar primeira visita</a>
 </div>
 {% endif %}
-
-<style>
-  .row-active {
-    background-color: #e8f5e9 !important;
-  }
-  .row-completed {
-    background-color: #f5f5f5 !important;
-  }
-  .row-active:hover {
-    background-color: #c8e6c9 !important;
-  }
-  .row-completed:hover {
-    background-color: #eeeeee !important;
-  }
-</style>
 {% endblock %}

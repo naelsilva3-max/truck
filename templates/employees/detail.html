@@ -14,18 +14,18 @@
 <div class="detail-card">
   <div class="photo-header">
     {% load static %}
-    <img src="{% if employee.photo %}{{ employee.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ employee.name }}" class="emp-photo" onclick="openLightbox(this.src)" style="cursor:zoom-in;">
+    <img src="{% if employee.photo %}{{ employee.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ employee.name }}" class="emp-photo" onclick="openLightbox(this.src)">
   </div>
 
   {# ---- Status de presença ---- #}
   <div class="presence-status mb-3">
     {% if presence_in %}
-      <span class="presence-badge presence-badge--in">⬆ DENTRO — IN</span>
+      <span class="presence-badge presence-badge--in">DENTRO — IN</span>
     {% else %}
-      <span class="presence-badge presence-badge--out">⬇ FORA — OUT</span>
+      <span class="presence-badge presence-badge--out">FORA — OUT</span>
     {% endif %}
     {% if presence_last_ts %}
-      <span class="text-muted" style="font-size:.85rem;">
+      <span class="text-muted text-sm">
         Última marcação: {{ presence_last_ts|date:"d/m/Y H:i:s" }}
       </span>
     {% endif %}
@@ -36,6 +36,16 @@
     <div class="detail-item"><dt>Cargo</dt><dd>{{ employee.role }}</dd></div>
     <div class="detail-item"><dt>Departamento</dt><dd>{{ employee.department|default:"—" }}</dd></div>
     <div class="detail-item"><dt>Telefone</dt><dd>{{ employee.phone|default:"—" }}</dd></div>
+    {% if employee.is_foreigner %}
+    <div class="detail-item"><dt>Estrangeiro?</dt><dd><span class="badge badge--info">Sim</span></dd></div>
+    <div class="detail-item"><dt>Tipo de Documento</dt><dd>{{ employee.foreign_document_type|default:"—" }}</dd></div>
+    <div class="detail-item"><dt>Número do Documento</dt><dd>{{ employee.foreign_document_number|default:"—" }}</dd></div>
+    {% else %}
+    <div class="detail-item"><dt>RG</dt><dd>{{ employee.rg|default:"—" }}</dd></div>
+    <div class="detail-item"><dt>CPF</dt><dd>{{ employee.cpf|default:"—" }}</dd></div>
+    {% endif %}
+    <div class="detail-item"><dt>Endereço</dt><dd>{{ employee.address|default:"—" }}</dd></div>
+    <div class="detail-item"><dt>CEP</dt><dd>{{ employee.cep|default:"—" }}</dd></div>
     <div class="detail-item"><dt>Data de Admissão</dt><dd>{{ employee.hire_date }}</dd></div>
     <div class="detail-item">
       <dt>É Motorista?</dt>
@@ -61,7 +71,7 @@
     <div class="detail-item">
       <dt>Foto do Documento</dt>
       <dd>
-        <img src="{{ employee.document_photo.url }}" alt="Documento de {{ employee.name }}" class="photo-thumb" style="max-width: 200px; cursor: zoom-in;" onclick="openLightbox(this.src)">
+        <img src="{{ employee.document_photo.url }}" alt="Documento de {{ employee.name }}" class="photo-thumb photo-thumb--200 cursor-zoom" onclick="openLightbox(this.src)">
       </dd>
     </div>
     {% endif %}
@@ -73,9 +83,12 @@
 {# ---- Links de histórico ---- #}
 <div class="detail-card">
   <h2>Históricos</h2>
-  <div class="d-flex gap-2" style="flex-wrap:wrap;">
+  <div class="d-flex gap-2 flex-wrap">
     <a href="{% url 'attendance:list' employee.pk %}" class="btn btn--outline">
       Registros de Ponto
+    </a>
+    <a href="{% url 'attendance_calendar' %}?employee={{ employee.pk }}" class="btn btn--outline">
+      Calendário de Presença
     </a>
     {% if employee.is_driver %}
     <a href="{% url 'trucks:global_assignments' %}?driver={{ employee.pk }}" class="btn btn--outline">
@@ -90,7 +103,7 @@
   <h2>Biometria</h2>
   {% if has_biometric %}
     <div class="biometric-status biometric-status--enrolled">
-      <span class="badge badge--success">✔ Biometria cadastrada</span>
+      <span class="badge badge--success">Biometria cadastrada</span>
       <p>
         Cadastrado em: {{ biometric_info.enrolled_at|date:"d/m/Y H:i" }}<br>
         Atualizado em: {{ biometric_info.updated_at|date:"d/m/Y H:i" }}
@@ -99,22 +112,9 @@
     <a href="{% url 'employees:enroll' employee.pk %}" class="btn btn--secondary">Recadastrar Biometria</a>
   {% else %}
     <div class="biometric-status biometric-status--missing">
-      <span class="badge badge--warning">✗ Sem biometria cadastrada</span>
+      <span class="badge badge--warning">Sem biometria cadastrada</span>
     </div>
     <a href="{% url 'employees:enroll' employee.pk %}" class="btn btn--primary">Cadastrar Biometria</a>
   {% endif %}
 </div>
 {% endblock %}
-
-<div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;" onclick="closeLightbox()">
-  <img id="lightbox-img" src="" style="max-width:90vw;max-height:90vh;border-radius:4px;">
-</div>
-<script>
-function openLightbox(src) {
-  document.getElementById('lightbox-img').src = src;
-  document.getElementById('lightbox').style.display = 'flex';
-}
-function closeLightbox() {
-  document.getElementById('lightbox').style.display = 'none';
-}
-</script>

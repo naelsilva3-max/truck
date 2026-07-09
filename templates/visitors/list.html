@@ -23,37 +23,11 @@
         <th>Empresa</th>
         <th>Telefone</th>
         <th>Documento</th>
+        <th>Data de Cadastro</th>
         <th>Ações</th>
       </tr>
     </thead>
-    <tbody>
-      {% for visitor in visitors %}
-      <tr>
-        <td class="photo-cell">
-          {% load static %}
-          <img src="{% if visitor.photo %}{{ visitor.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ visitor.name }}" class="photo-thumb photo-thumb--list">
-        </td>
-        <td>{{ visitor.name }}</td>
-        <td>{{ visitor.company|default:"—" }}</td>
-        <td>{{ visitor.phone|default:"—" }}</td>
-        <td>
-          {% if visitor.document_photo %}
-            <span class="badge badge--success">✓ Foto</span>
-          {% else %}
-            <span class="badge badge--secondary">Sem foto</span>
-          {% endif %}
-        </td>
-        <td class="table-actions">
-          {% if can_edit %}
-          <a href="{% url 'visitors:update' visitor.pk %}" class="btn btn--sm btn--primary">Editar</a>
-          {% endif %}
-          <a href="{% url 'visitors:visit_create' %}?visitor={{ visitor.pk }}" class="btn btn--sm btn--secondary">Nova Visita</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+    {% include 'partials/_infinite_scroll_body.html' with rows_template='visitors/_visitor_rows.html' %}
 {% else %}
 <div class="empty-state">
   <p>Nenhum visitante cadastrado ainda.</p>

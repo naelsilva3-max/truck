@@ -1,0 +1,10 @@
+    <tbody id="infinite-tbody">
+      {% include rows_template %}
+    </tbody>
+  </table>
+</div>
+<div id="infinite-sentinel" class="infinite-sentinel"></div>
+<div id="infinite-loader" class="infinite-loader"><span class="infinite-spinner"></span> Carregando...</div>
+{% if page_obj.has_next %}
+<script>window._infiniteNextPage = {{ page_obj.next_page_number }};</script>
+{% endif %}

@@ -3,13 +3,15 @@
 {% block content %}
 <div class="page-header">
   <h1>Gerenciar Usuários</h1>
-  <a href="{% url 'accounts:create_user' %}" class="btn btn-primary">Novo Usuário</a>
+  <a href="{% url 'accounts:create_user' %}" class="btn btn--primary">Novo Usuário</a>
 </div>
 <div class="table-responsive">
   <table class="table">
     <thead>
       <tr>
         <th>Usuário</th>
+        <th>Email</th>
+        <th>CPF</th>
         <th>Nível</th>
         <th>Status</th>
         <th>Ações</th>
@@ -20,38 +22,53 @@
       <tr>
         <td>{{ u.username }}</td>
         <td>
-          <form method="post" action="{% url 'accounts:change_role' u.pk %}" style="display:inline;">
+          {{ u.email|default:"—" }}
+          {% if u.profile.email_verified %}
+            <span class="badge badge--success">Verificado</span>
+          {% else %}
+            <span class="badge badge--warning">Não verificado</span>
+          {% endif %}
+        </td>
+        <td>{{ u.profile.cpf|default:"—" }}</td>
+        <td>
+          <form method="post" action="{% url 'accounts:change_role' u.pk %}" class="d-inline">
             {% csrf_token %}
-            <select name="role" onchange="this.form.submit()" class="form-control form-control-sm" style="display:inline;width:auto;">
-              <option value="simple" {% if u.profile.role == 'simple' %}selected{% endif %}>Simples</option>
-              <option value="admin" {% if u.profile.role == 'admin' %}selected{% endif %}>Admin</option>
-              <option value="master" {% if u.profile.role == 'master' %}selected{% endif %}>Master</option>
+            <select name="role" onchange="this.form.submit()" class="form-control form-control--sm d-inline w-auto">
+              {% for value, label in role_choices %}
+              <option value="{{ value }}" {% if u.profile.role == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
             </select>
           </form>
         </td>
         <td>
           {% if u.is_active %}
-            <span class="badge badge-success">Ativo</span>
+            <span class="badge badge--success">Ativo</span>
           {% else %}
-            <span class="badge badge-danger">Inativo</span>
+            <span class="badge badge--danger">Inativo</span>
           {% endif %}
         </td>
         <td>
-          {% if u != request.user %}
-          <form method="post" action="{% url 'accounts:toggle_user' u.pk %}" style="display:inline;">
+          {% if not u.profile.email_verified and u.email %}
+          <form method="post" action="{% url 'accounts:resend_verification' u.pk %}" class="d-inline">
             {% csrf_token %}
-            <button type="submit" class="btn btn-sm {% if u.is_active %}btn-warning{% else %}btn-success{% endif %}"
+            <button type="submit" class="btn btn--sm btn--secondary">Reenviar verificação</button>
+          </form>
+          {% endif %}
+          {% if u != request.user %}
+          <form method="post" action="{% url 'accounts:toggle_user' u.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn--sm {% if u.is_active %}btn--warning{% else %}btn--success{% endif %}"
               onclick="return confirm('{% if u.is_active %}Desativar conta de {{ u.username }}? O usuário não conseguirá mais fazer login, mas seus registros serão mantidos.{% else %}Reativar conta de {{ u.username }}?{% endif %}')">
               {% if u.is_active %}Desativar{% else %}Reativar{% endif %}
             </button>
           </form>
           {% else %}
-          <span style="color:#aaa;">Conta atual</span>
+          <span class="text-muted">Conta atual</span>
           {% endif %}
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="4">Nenhum usuário encontrado.</td></tr>
+      <tr><td colspan="6" class="table-empty-cell">Nenhum usuário encontrado.</td></tr>
       {% endfor %}
     </tbody>
   </table>

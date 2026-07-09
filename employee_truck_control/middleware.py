@@ -16,7 +16,7 @@ _local = threading.local()
 
 
 def _check_value(value) -> None:
-    from employees.models import BiometricTemplate
+    from biometric.models import BiometricTemplate
     if isinstance(value, BiometricTemplate):
         raise PermissionError(
             "Direct access to BiometricTemplate objects in templates is forbidden. "
