@@ -25,19 +25,19 @@
         <a href="{% url 'visitors:visit_list' %}">Visitas</a>
         <a href="{% url 'reports_index' %}">Relatórios</a>
         <div class="navbar-dropdown" id="systemMenu">
-          <button type="button" class="navbar-dropdown-toggle" onclick="document.getElementById('systemMenu').classList.toggle('open')">
+          <button type="button" class="navbar-dropdown-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="systemMenuList" onclick="toggleSystemMenu(this)">
             Sistema <span class="navbar-dropdown-caret">▾</span>
           </button>
-          <div class="navbar-dropdown-menu">
+          <div class="navbar-dropdown-menu" id="systemMenuList" role="menu">
             {% if is_master %}
-              <a href="{% url 'accounts:manage_users' %}">Usuários</a>
-              <a href="{% url 'accounts:system_logs' %}">Log do Sistema</a>
-              <a href="{% url 'biometric:kiosk_token' %}">Gerar Token de Quiosque</a>
+              <a href="{% url 'accounts:manage_users' %}" role="menuitem">Usuários</a>
+              <a href="{% url 'accounts:system_logs' %}" role="menuitem">Log do Sistema</a>
+              <a href="{% url 'biometric:kiosk_token' %}" role="menuitem">Gerar Token de Quiosque</a>
             {% endif %}
-            <a href="{% url 'accounts:my_account' %}">Minha Conta</a>
+            <a href="{% url 'accounts:my_account' %}" role="menuitem">Minha Conta</a>
             <form method="post" action="{% url 'logout' %}" class="navbar-dropdown-form">
               {% csrf_token %}
-              <button type="submit" class="navbar-dropdown-item">Sair</button>
+              <button type="submit" class="navbar-dropdown-item" role="menuitem">Sair</button>
             </form>
           </div>
         </div>
@@ -82,7 +82,7 @@
   <div id="zoom-modal" class="modal">
     <span class="modal-close" onclick="closeZoomableLightbox()">&times;</span>
     <div class="modal-image-wrapper">
-      <img class="modal-content" id="zoom-modal-img">
+      <img class="modal-content" id="zoom-modal-img" alt="">
     </div>
     <div class="modal-controls">
       <button class="zoom-btn" onclick="zoomableLightboxZoomIn()" title="Aumentar zoom">+</button>
@@ -349,10 +349,29 @@
   </script>
 
   <script>
+  function toggleSystemMenu(btn) {
+    var menu = document.getElementById('systemMenu');
+    var isOpen = menu.classList.toggle('open');
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }
+
   document.addEventListener('click', function (e) {
     var menu = document.getElementById('systemMenu');
     if (menu && !menu.contains(e.target)) {
       menu.classList.remove('open');
+      var btn = menu.querySelector('.navbar-dropdown-toggle');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      var menu = document.getElementById('systemMenu');
+      if (menu) {
+        menu.classList.remove('open');
+        var btn = menu.querySelector('.navbar-dropdown-toggle');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
     }
   });
   </script>
