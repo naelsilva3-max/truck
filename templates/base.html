@@ -384,6 +384,16 @@
     }
 
     setInterval(tick, intervalMs);
+
+    // tick() already no-ops while the tab is hidden (document.hidden), but
+    // without this it can take a while to notice you're back: browsers
+    // throttle setInterval heavily in background tabs, so the first tick
+    // after refocusing can be delayed well past intervalMs. Firing an
+    // immediate catch-up tick on refocus makes it feel instant again
+    // instead of "you have to reload the page".
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) tick();
+    });
   };
   </script>
 
