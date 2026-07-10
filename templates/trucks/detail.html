@@ -69,7 +69,7 @@
   {% if current_driver %}
     <p><span class="badge badge--info">{{ current_driver.name }}</span></p>
     {% if can_edit %}
-    <form method="post" action="{% url 'trucks:unassign' truck.pk %}" class="d-inline">
+    <form method="post" action="{% url 'trucks:unassign' truck.pk %}" class="d-inline" onsubmit="return confirm('Desassociar {{ current_driver.name }} deste caminhão?')">
       {% csrf_token %}
       <button type="submit" class="btn btn--danger">Desassociar Motorista</button>
     </form>
