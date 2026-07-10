@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import base64
 import logging
+import logging.handlers
 import os
 import sys
 import threading
@@ -43,14 +44,47 @@ from pathlib import Path
 from dotenv import load_dotenv
 import requests
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parent / '.env')
+# Under a PyInstaller onefile build, __file__ resolves inside the temporary
+# extraction directory (a fresh one per run), not the folder the .exe
+# actually lives in — sys.executable is the one that points at the real
+# install location in that case. sys.frozen is set by PyInstaller's
+# bootloader; plain `python kiosk_agent.py` has neither set.
+#
+# The installed .exe lives under Program Files, which a standard (non-
+# elevated) user — including the Scheduled Task, which intentionally runs
+# with the logged-on user's normal token, not admin — cannot write to.
+# Mutable runtime files (.env, the log) therefore live in %LOCALAPPDATA%
+# for a frozen build; a source checkout keeps the original behavior
+# (everything next to the script), since that's what the manual/dev setup
+# on this machine already relies on.
+if getattr(sys, 'frozen', False):
+    _APP_DIR = Path(sys.executable).resolve().parent
+    _DATA_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'ZK9500Kiosk'
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+else:
+    _APP_DIR = Path(__file__).resolve().parent
+    _DATA_DIR = _APP_DIR
+load_dotenv(dotenv_path=_DATA_DIR / '.env')
 
 from biometric.daemon import run_until_shutdown
 from biometric.exceptions import BiometricDeviceNotFoundError, BiometricNotConnectedError
 from biometric.listener import BiometricListener
 from biometric.service import BiometricService
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# A windowed build (no console attached — e.g. run silently by the
+# Scheduled Task) has sys.stdout/sys.stderr set to None, so a bare
+# StreamHandler would crash on first log call. Always log to a rotating
+# file next to the script/exe (or in %LOCALAPPDATA% when frozen — see
+# above); add the console handler only when one actually exists, so
+# `kiosk_agent.exe enroll` run interactively still prints to the terminal.
+_log_handlers: list[logging.Handler] = [
+    logging.handlers.RotatingFileHandler(
+        _DATA_DIR / 'kiosk_agent.log', maxBytes=5_000_000, backupCount=3, encoding='utf-8',
+    ),
+]
+if sys.stdout is not None:
+    _log_handlers.append(logging.StreamHandler())
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", handlers=_log_handlers)
 logger = logging.getLogger("kiosk_agent")
 
 

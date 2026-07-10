@@ -37,3 +37,6 @@ backups/
 
 # Environment variables
 .env
+
+# Kiosk installer build artifacts (dist/, build/ already ignored above)
+kiosk_installer/output/

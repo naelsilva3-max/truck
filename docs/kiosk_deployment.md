@@ -16,7 +16,7 @@ No servidor central, com o ambiente virtual do projeto ativo:
 python manage.py kiosk_device create --name "Recepção - Matriz"
 ```
 
-O comando mostra o token **uma única vez** — copie e guarde em local seguro (ex.: gerenciador de senhas). Ele não pode ser recuperado depois; se perder, revogue e crie outro (seção 6).
+O comando mostra o token **uma única vez** — copie e guarde em local seguro (ex.: gerenciador de senhas). Ele não pode ser recuperado depois; se perder, revogue e crie outro (seção 7).
 
 Outros comandos úteis:
 
@@ -24,6 +24,8 @@ Outros comandos úteis:
 python manage.py kiosk_device list
 python manage.py kiosk_device revoke --id 3
 ```
+
+**Alternativa sem SSH**: um usuário com role `master` também pode gerar um token pelo próprio site, em **Sistema → Gerar Token de Quiosque** (`/biometric/kiosk-token/`) — mesma informação de `kiosk_device list`, e o token só é mostrado uma vez, igual ao comando.
 
 ## 2. Pré-requisitos do servidor
 
@@ -33,9 +35,27 @@ python manage.py kiosk_device revoke --id 3
 
 ## 3. Quiosque: instalação
 
+### Opção A — instalador `.exe` (recomendado)
+
+`kiosk_installer/` tem um instalador gráfico ("Avançar, Avançar, Concluir") que faz os passos 2-6 abaixo sozinho: copia os binários (Python + dependências já embutidos, não precisa instalar Python na máquina do quiosque), escreve o `.env`, registra e inicia a Tarefa Agendada.
+
+1. Gerar o instalador (nesta máquina de desenvolvimento, com o venv do projeto e o Inno Setup instalados — `winget install JRSoftware.InnoSetup`):
+   ```
+   powershell -ExecutionPolicy Bypass -File kiosk_installer\build.ps1
+   ```
+   Gera `kiosk_installer\output\ZK9500KioskSetup.exe`.
+2. Copie esse `.exe` para a máquina do quiosque (pendrive, rede, etc.) e rode-o lá.
+3. **Pré-requisito que o instalador não resolve sozinho**: o driver/SDK **ZKFinger** da ZKTeco precisa já estar instalado nessa máquina (nível de sistema operacional, fora do instalador) — sem ele, o quiosque não fala com o leitor mesmo depois de instalado. O wizard mostra um lembrete, mas não instala nem verifica automaticamente.
+4. No wizard: cole a URL do servidor e o token do dispositivo (gerado no passo 1 da seção anterior, ou pela página **Sistema → Gerar Token de Quiosque**).
+5. Pronto — a Tarefa Agendada `ZK9500KioskListener` já fica registrada e rodando. Atalhos no Menu Iniciar: "Cadastrar biometria (manual)" e "Ver logs".
+
+**Nota sobre o Smart App Control do Windows 11**: como o instalador não é assinado digitalmente, o Smart App Control (quando ativado) pode bloquear a execução sem nem oferecer a opção "Executar assim mesmo" do SmartScreen. Se isso acontecer, é preciso desativá-lo em Configurações → Privacidade e segurança → Segurança do Windows → Controle de aplicativos e navegador — **atenção: uma vez desativado, só volta a ativar reinstalando o Windows**.
+
+### Opção B — manual (a partir do código-fonte)
+
 1. Copie o repositório (ou ao menos a pasta `biometric/` + `kiosk_agent.py` + `requirements-kiosk.txt`) para a máquina do quiosque.
 2. Instale o driver/SDK **ZKFinger** da ZKTeco nessa máquina (nível de sistema operacional, fora do Python) — sem ele, o `pyzkfp` não consegue falar com o leitor.
-3. Crie um ambiente virtual e instale as dependências mínimas:
+3. Instale **Python** na máquina do quiosque, crie um ambiente virtual e instale as dependências mínimas:
    ```
    python -m venv .venv
    .venv\Scripts\activate
@@ -82,6 +102,8 @@ Mantém uma sincronização periódica (padrão a cada 5 minutos) da lista de di
 
 ## 6. Rodar como serviço resiliente no Windows
 
+Se instalou pela **Opção A** (instalador `.exe`) da seção 3, isso já está feito — pule esta seção. As opções abaixo são para quem instalou manualmente (Opção B).
+
 Para sobreviver a reinícios do computador e a travamentos do processo, use uma das opções:
 
 **Opção A — Agendador de Tarefas (Task Scheduler)**
@@ -115,3 +137,5 @@ Atualize o `.env` do quiosque com o novo token e reinicie o serviço/processo.
 - **Pedidos de cadastro remoto (seção 4.1) não expiram sozinhos**: se o quiosque ficar offline por muito tempo, o pedido fica pendente indefinidamente até alguém cancelar manualmente pela página do site.
 - **Um único quiosque físico é assumido**: não há coordenação se mais de um `kiosk_agent.py listen` fizer polling da mesma fila de pedidos ao mesmo tempo (o endpoint só devolve o pedido mais antigo, sem "reservá-lo").
 - **Retentativa sem backoff**: se ninguém aparecer no leitor para um pedido pendente, o quiosque tenta capturar de novo a cada `KIOSK_ENROLL_POLL_SECONDS`, até o pedido ser atendido ou cancelado.
+- **Instalador não assinado**: sem certificado de code signing, o Windows (SmartScreen e/ou Smart App Control) trata o `.exe` como desconhecido na primeira execução — ver nota na seção 3.
+- **Local de `.env`/log difere por modo de instalação**: pela Opção A (instalador), fica em `%LOCALAPPDATA%\ZK9500Kiosk\` (Program Files não é gravável pela Tarefa Agendada, que roda com o token do usuário logado, não elevado); pela Opção B (manual), fica na mesma pasta do `kiosk_agent.py`.
