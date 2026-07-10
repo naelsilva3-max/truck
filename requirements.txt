@@ -5,7 +5,7 @@ colorama==0.4.6
 Django==6.0.7
 django-db-connection-pool==1.2.6
 django-optimized-image==0.3.0
-gunicorn==23.0.0
+gunicorn==26.0.0
 greenlet==3.5.3
 hypothesis==6.155.2
 idna==3.18
