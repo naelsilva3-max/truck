@@ -10,7 +10,8 @@ import pytest
 from django.test import Client
 from django.urls import reverse
 
-from attendance.models import AttendanceRecord
+from attendance.models import AttendanceRecord, PresenceEvent
+from attendance.service import AttendanceService
 from biometric.models import BiometricEnrollRequest, BiometricTemplate, KioskDevice
 from employees.models import Employee
 
@@ -259,15 +260,30 @@ class TestKioskScanReportView:
         emp = make_employee()
         client = Client()
         self._post(client, device, emp.pk)
-        # Backdate the entry so exit_time's "at least 1s after entry_time"
-        # model validation is satisfied (mirrors attendance/tests/test_service.py).
+        # Backdate the entry (and its PresenceEvent, past AttendanceService.
+        # SCAN_COOLDOWN) so exit_time's "at least 1s after entry_time" model
+        # validation is satisfied AND the duplicate-scan cooldown doesn't
+        # reject the second scan (mirrors attendance/tests/test_service.py).
         open_rec = AttendanceRecord.objects.get(employee=emp, exit_time__isnull=True)
-        AttendanceRecord.objects.filter(pk=open_rec.pk).update(
-            entry_time=open_rec.entry_time - timedelta(seconds=2)
-        )
+        backdated = open_rec.entry_time - AttendanceService.SCAN_COOLDOWN - timedelta(seconds=1)
+        AttendanceRecord.objects.filter(pk=open_rec.pk).update(entry_time=backdated)
+        PresenceEvent.objects.filter(employee=emp).update(timestamp=backdated)
         response = self._post(client, device, emp.pk)
         assert response.status_code == 200
         assert response.json()['direction'] == 'OUT'
+
+    def test_second_scan_within_cooldown_returns_429(self, device):
+        emp = make_employee()
+        client = Client()
+        self._post(client, device, emp.pk)
+
+        response = self._post(client, device, emp.pk)
+
+        assert response.status_code == 429
+        body = response.json()
+        assert body['error'] == 'duplicate_scan'
+        assert body['employee_name'] == emp.name
+        assert body['retry_after_seconds'] > 0
 
     def test_unknown_employee_returns_404(self, device):
         client = Client()

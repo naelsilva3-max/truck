@@ -8,7 +8,7 @@ from django.test import Client
 from django.utils import timezone
 
 from accounts.models import UserProfile
-from attendance.models import AttendanceRecord
+from attendance.models import AttendanceRecord, PresenceEvent
 from attendance.service import AttendanceService
 from biometric.models import BiometricTemplate
 from employees.models import Employee
@@ -143,10 +143,11 @@ class TestBiometricAttendanceToggle:
 
         # First event: entry
         rec = svc.process_biometric_event(template_bytes)
-        # Backdate entry to ensure valid exit
-        AttendanceRecord.objects.filter(pk=rec.pk).update(
-            entry_time=rec.entry_time - timedelta(seconds=5)
-        )
+        # Backdate entry (and its PresenceEvent, past SCAN_COOLDOWN) to
+        # ensure a valid exit and to clear the duplicate-scan cooldown.
+        backdated = rec.entry_time - AttendanceService.SCAN_COOLDOWN - timedelta(seconds=1)
+        AttendanceRecord.objects.filter(pk=rec.pk).update(entry_time=backdated)
+        PresenceEvent.objects.filter(attendance_record=rec).update(timestamp=backdated)
 
         # Second event: exit
         rec2 = svc.process_biometric_event(template_bytes)

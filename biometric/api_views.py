@@ -22,6 +22,7 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
+from attendance.exceptions import DuplicateScanError
 from attendance.service import AttendanceService
 from biometric.auth import DeviceTokenAuthMixin
 from biometric.models import BiometricEnrollRequest, BiometricTemplate
@@ -155,6 +156,13 @@ class KioskScanReportView(DeviceTokenAuthMixin, View):
             record = service.toggle_for_employee(employee_id)
         except Employee.DoesNotExist:
             return JsonResponse({'error': 'employee_not_found'}, status=404)
+        except DuplicateScanError as exc:
+            return JsonResponse({
+                'error': 'duplicate_scan',
+                'detail': str(exc),
+                'employee_name': exc.employee_name,
+                'retry_after_seconds': exc.retry_after_seconds,
+            }, status=429)
         except ValueError as exc:
             return JsonResponse({'error': 'employee_inactive', 'detail': str(exc)}, status=409)
 

@@ -5,7 +5,7 @@ Run with:  pytest --hypothesis-seed=0
 """
 import pytest
 from datetime import date, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
@@ -185,16 +185,21 @@ def test_attendance_toggle_at_most_one_open(n):
     svc = AttendanceService(biometric_service=mock_bio)
 
     base_time = timezone.now() - timedelta(hours=n + 1)
-    for i in range(n):
-        # Backdate any open record so exit is valid
-        open_rec = AttendanceRecord.objects.filter(
-            employee=emp, exit_time__isnull=True
-        ).first()
-        if open_rec:
-            AttendanceRecord.objects.filter(pk=open_rec.pk).update(
-                entry_time=base_time + timedelta(seconds=i * 10)
-            )
-        svc.process_biometric_event(template_bytes)
+    # This property is about toggle-count correctness across many rapid
+    # calls, independent of AttendanceService.SCAN_COOLDOWN (the duplicate-
+    # scan guard, covered separately in attendance/tests/test_service.py) —
+    # disabled here so it doesn't interfere.
+    with patch.object(AttendanceService, '_check_cooldown', lambda self, employee_id: None):
+        for i in range(n):
+            # Backdate any open record so exit is valid
+            open_rec = AttendanceRecord.objects.filter(
+                employee=emp, exit_time__isnull=True
+            ).first()
+            if open_rec:
+                AttendanceRecord.objects.filter(pk=open_rec.pk).update(
+                    entry_time=base_time + timedelta(seconds=i * 10)
+                )
+            svc.process_biometric_event(template_bytes)
 
     open_count = AttendanceRecord.objects.filter(
         employee=emp, exit_time__isnull=True
@@ -221,15 +226,19 @@ def test_exit_time_always_after_entry_time(n):
     svc = AttendanceService(biometric_service=mock_bio)
 
     base = timezone.now() - timedelta(hours=n * 2)
-    for i in range(n * 2):
-        open_rec = AttendanceRecord.objects.filter(
-            employee=emp, exit_time__isnull=True
-        ).first()
-        if open_rec:
-            AttendanceRecord.objects.filter(pk=open_rec.pk).update(
-                entry_time=base + timedelta(seconds=i * 5)
-            )
-        svc.process_biometric_event(template_bytes)
+    # Same rationale as test_attendance_toggle_at_most_one_open above: this
+    # property targets exit-after-entry ordering, not the duplicate-scan
+    # cooldown.
+    with patch.object(AttendanceService, '_check_cooldown', lambda self, employee_id: None):
+        for i in range(n * 2):
+            open_rec = AttendanceRecord.objects.filter(
+                employee=emp, exit_time__isnull=True
+            ).first()
+            if open_rec:
+                AttendanceRecord.objects.filter(pk=open_rec.pk).update(
+                    entry_time=base + timedelta(seconds=i * 5)
+                )
+            svc.process_biometric_event(template_bytes)
 
     for rec in AttendanceRecord.objects.filter(employee=emp, exit_time__isnull=False):
         assert rec.exit_time > rec.entry_time

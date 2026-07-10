@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import date as _date
+from datetime import date as _date, timedelta
 from typing import TYPE_CHECKING
 
 from django.utils import timezone
 
+from attendance.exceptions import DuplicateScanError
 from attendance.models import AttendanceRecord, PresenceEvent
 from biometric.models import BiometricTemplate
 
@@ -17,6 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 class AttendanceService:
+
+    # Minimum time between two registrations (IN or OUT, in either order)
+    # for the same employee — guards against accidental double-taps at the
+    # reader (or a stale/duplicate identification) being recorded as two
+    # separate attendance events.
+    SCAN_COOLDOWN = timedelta(minutes=3)
 
     def __init__(self, biometric_service: '_BiometricServiceType | None' = None) -> None:
         self._biometric_service = biometric_service
@@ -83,15 +90,29 @@ class AttendanceService:
         logger.info("Exit recorded for employee %s at %s.", employee_id, now)
         return record
 
+    def _check_cooldown(self, employee_id: int) -> None:
+        _, last_ts = self.get_current_status(employee_id)
+        if last_ts is None:
+            return
+        elapsed = timezone.now() - last_ts
+        if elapsed < self.SCAN_COOLDOWN:
+            from employees.models import Employee
+            employee = Employee.objects.get(pk=employee_id)
+            retry_after = max(1, int((self.SCAN_COOLDOWN - elapsed).total_seconds()))
+            raise DuplicateScanError(employee.name, retry_after)
+
     def toggle_for_employee(self, employee_id: int) -> AttendanceRecord:
         """
         Toggle IN/OUT for an already-identified employee: records an entry if
         there's no open record, otherwise closes it with an exit.
 
         Propagates Employee.DoesNotExist and ValueError (inactive employee)
-        raised by record_entry/record_exit's _check_active — callers (e.g. the
-        kiosk scan API view) map these to 4xx responses.
+        raised by record_entry/record_exit's _check_active, and
+        DuplicateScanError (see SCAN_COOLDOWN/_check_cooldown) — callers
+        (e.g. the kiosk scan API view) map these to 4xx responses.
         """
+        self._check_active(employee_id)
+        self._check_cooldown(employee_id)
         open_record = self.get_open_record(employee_id)
         if open_record is None:
             return self.record_entry(employee_id)

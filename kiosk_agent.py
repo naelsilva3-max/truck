@@ -42,6 +42,7 @@ import queue
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -286,7 +287,7 @@ def _check_and_fulfill_enroll_request(listener: BiometricListener, service: Biom
             logger.error("Não foi possível retomar a escuta normal após o pedido remoto: %s", exc)
 
 
-_notify_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
+_notify_queue: "queue.Queue[tuple[str, tuple]]" = queue.Queue()
 _notify_worker_started = False
 _notify_worker_lock = threading.Lock()
 
@@ -294,11 +295,18 @@ _notify_worker_lock = threading.Lock()
 NOTICE_DISPLAY_MS = 3500
 
 
-def _show_fullscreen_notice(employee_name: str, direction: str) -> None:
-    import tkinter as tk
+def _format_local_time(iso_timestamp: str | None) -> str:
+    """Convert the server's ISO-8601 (UTC) timestamp to a local HH:MM:SS string."""
+    if not iso_timestamp:
+        return ""
+    try:
+        return datetime.fromisoformat(iso_timestamp).astimezone().strftime("%H:%M:%S")
+    except ValueError:
+        return ""
 
-    is_in = direction == "IN"
-    bg = "#1e7e34" if is_in else "#b02a37"  # green for entrada, red for saída
+
+def _show_fullscreen_message(bg: str, title: str, subtitle: str, detail: str = "") -> None:
+    import tkinter as tk
 
     root = tk.Tk()
     root.attributes("-fullscreen", True)
@@ -307,12 +315,15 @@ def _show_fullscreen_notice(employee_name: str, direction: str) -> None:
     root.config(cursor="none")
 
     tk.Label(
-        root, text=employee_name, font=("Segoe UI", 96, "bold"), fg="white", bg=bg,
+        root, text=title, font=("Segoe UI", 96, "bold"), fg="white", bg=bg,
     ).pack(expand=True)
     tk.Label(
-        root, text="ENTRADA REGISTRADA" if is_in else "SAÍDA REGISTRADA",
-        font=("Segoe UI", 64, "bold"), fg="white", bg=bg,
+        root, text=subtitle, font=("Segoe UI", 56, "bold"), fg="white", bg=bg,
     ).pack(expand=True)
+    if detail:
+        tk.Label(
+            root, text=detail, font=("Segoe UI", 40, "bold"), fg="white", bg=bg,
+        ).pack(expand=True)
 
     # Any key/click dismisses early; otherwise it closes itself.
     root.bind("<Button-1>", lambda _e: root.destroy())
@@ -323,20 +334,52 @@ def _show_fullscreen_notice(employee_name: str, direction: str) -> None:
 
 
 def _notify_worker() -> None:
+    try:
+        import winsound
+    except Exception:
+        winsound = None  # noqa: N806
+
     while True:
-        employee_name, direction = _notify_queue.get()
+        kind, payload = _notify_queue.get()
         try:
-            import winsound
-            winsound.Beep(1500, 200)
+            if winsound is not None:
+                if kind == "success":
+                    winsound.Beep(1500, 200)
+                else:
+                    winsound.Beep(600, 150)
+                    winsound.Beep(600, 150)
         except Exception:
-            logger.exception("Falha ao tocar o som de confirmação.")
+            logger.exception("Falha ao tocar o som de aviso.")
         try:
-            _show_fullscreen_notice(employee_name, direction)
+            if kind == "success":
+                employee_name, direction, time_label = payload
+                is_in = direction == "IN"
+                _show_fullscreen_message(
+                    "#1e7e34" if is_in else "#b02a37",  # green (entrada) / red (saída)
+                    employee_name,
+                    "ENTRADA REGISTRADA" if is_in else "SAÍDA REGISTRADA",
+                    detail=f"às {time_label}" if time_label else "",
+                )
+            else:
+                employee_name, retry_after_seconds = payload
+                _show_fullscreen_message(
+                    "#b8860b",  # amber
+                    employee_name,
+                    f"REGISTRO NEGADO — aguarde {retry_after_seconds}s",
+                )
         except Exception:
-            logger.exception("Falha ao mostrar o aviso de ponto registrado.")
+            logger.exception("Falha ao mostrar o aviso de ponto (%s).", kind)
 
 
-def _notify_scan_success(employee_name: str, direction: str) -> None:
+def _ensure_notify_worker() -> None:
+    global _notify_worker_started
+    with _notify_worker_lock:
+        if not _notify_worker_started:
+            threading.Thread(target=_notify_worker, daemon=True, name="ScanNotify").start()
+            _notify_worker_started = True
+
+
+def _notify_scan_success(employee_name: str, direction: str, time_label: str = "") -> None:
     """
     Give immediate on-screen + audible feedback for a successful scan.
 
@@ -350,14 +393,16 @@ def _notify_scan_success(employee_name: str, direction: str) -> None:
     """
     if sys.platform != "win32":
         return
+    _ensure_notify_worker()
+    _notify_queue.put(("success", (employee_name, direction, time_label)))
 
-    global _notify_worker_started
-    with _notify_worker_lock:
-        if not _notify_worker_started:
-            threading.Thread(target=_notify_worker, daemon=True, name="ScanNotify").start()
-            _notify_worker_started = True
 
-    _notify_queue.put((employee_name, direction))
+def _notify_scan_denied(employee_name: str, retry_after_seconds: int) -> None:
+    """Same delivery mechanism as _notify_scan_success, for a rejected (duplicate) scan."""
+    if sys.platform != "win32":
+        return
+    _ensure_notify_worker()
+    _notify_queue.put(("denied", (employee_name, retry_after_seconds)))
 
 
 def cmd_listen(args: argparse.Namespace) -> None:
@@ -401,7 +446,18 @@ def cmd_listen(args: argparse.Namespace) -> None:
             if resp.ok:
                 body = resp.json()
                 logger.info("Ponto registrado: %s", body)
-                _notify_scan_success(body.get("employee_name", f"Funcionário #{employee_id}"), body.get("direction", ""))
+                _notify_scan_success(
+                    body.get("employee_name", f"Funcionário #{employee_id}"),
+                    body.get("direction", ""),
+                    _format_local_time(body.get("timestamp")),
+                )
+            elif resp.status_code == 429:
+                body = resp.json()
+                logger.warning("Registro negado (duplicidade): %s", body)
+                _notify_scan_denied(
+                    body.get("employee_name", f"Funcionário #{employee_id}"),
+                    body.get("retry_after_seconds", 0),
+                )
             else:
                 # v1 limitation: log + drop. No offline queue/retry — see docs/kiosk_deployment.md.
                 logger.error("Falha ao registrar ponto (%s): %s", resp.status_code, resp.text)

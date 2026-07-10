@@ -5,7 +5,8 @@ from unittest.mock import MagicMock
 
 from django.utils import timezone
 
-from attendance.models import AttendanceRecord
+from attendance.exceptions import DuplicateScanError
+from attendance.models import AttendanceRecord, PresenceEvent
 from attendance.service import AttendanceService
 from biometric.models import BiometricTemplate
 from employees.models import Employee
@@ -70,11 +71,12 @@ class TestAttendanceService:
 
         # First event: entry
         svc.process_biometric_event(template_bytes)
-        # Backdate entry so exit is at least 1s later
+        # Backdate entry (and its PresenceEvent, past SCAN_COOLDOWN) so the
+        # second call is both >=1s later and outside the duplicate-scan window.
         open_rec = svc.get_open_record(emp.pk)
-        AttendanceRecord.objects.filter(pk=open_rec.pk).update(
-            entry_time=open_rec.entry_time - timedelta(seconds=2)
-        )
+        backdated = open_rec.entry_time - AttendanceService.SCAN_COOLDOWN - timedelta(seconds=1)
+        AttendanceRecord.objects.filter(pk=open_rec.pk).update(entry_time=backdated)
+        PresenceEvent.objects.filter(attendance_record=open_rec).update(timestamp=backdated)
         # Second event: exit
         rec = svc.process_biometric_event(template_bytes)
         assert rec.exit_time is not None
@@ -105,3 +107,41 @@ class TestAttendanceService:
         results = svc.list_records(emp.pk, start_date=now.date(), end_date=now.date())
         assert all(r.date == now.date() for r in results)
         assert results.count() == 1
+
+
+@pytest.mark.django_db
+class TestAttendanceServiceScanCooldown:
+    def test_second_toggle_within_cooldown_raises(self):
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)
+
+        with pytest.raises(DuplicateScanError) as exc_info:
+            svc.toggle_for_employee(emp.pk)
+        assert exc_info.value.employee_name == emp.name
+        assert 0 < exc_info.value.retry_after_seconds <= AttendanceService.SCAN_COOLDOWN.total_seconds()
+
+    def test_toggle_after_cooldown_elapsed_succeeds(self):
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)
+
+        last_event = PresenceEvent.objects.filter(employee=emp).latest('timestamp')
+        PresenceEvent.objects.filter(pk=last_event.pk).update(
+            timestamp=last_event.timestamp - AttendanceService.SCAN_COOLDOWN - timedelta(seconds=1)
+        )
+        AttendanceRecord.objects.filter(employee=emp, exit_time__isnull=True).update(
+            entry_time=last_event.timestamp - AttendanceService.SCAN_COOLDOWN - timedelta(seconds=1)
+        )
+
+        rec = svc.toggle_for_employee(emp.pk)
+        assert rec.exit_time is not None
+
+    def test_cooldown_does_not_apply_to_a_different_employee(self):
+        emp1 = make_employee(name="Um")
+        emp2 = make_employee(name="Dois")
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp1.pk)
+
+        rec = svc.toggle_for_employee(emp2.pk)  # should not raise
+        assert rec.employee_id == emp2.pk
