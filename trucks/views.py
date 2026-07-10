@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import CharField, Q
+from django.db.models import CharField, Prefetch, Q
 from django.db.models.functions import Cast
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -31,15 +31,22 @@ def get_current_driver(truck_id: int) -> Employee | None:
     return assignment.driver if assignment else None
 
 
+def get_current_driver_prefetched(truck: Truck) -> Employee | None:
+    """Same as get_current_driver, but reads from a `current_assignments`
+    Prefetch (see TruckListView) instead of running a query per truck."""
+    assignments = truck.current_assignments
+    return assignments[0].driver if assignments else None
+
+
 def list_assignments(truck_id: int):
     return TruckAssignment.objects.filter(truck_id=truck_id).select_related('driver')
 
 
 def get_cover_photo_url(truck: Truck) -> str | None:
     """First photo added to the truck's gallery, falling back to the legacy single-photo field."""
-    first_photo = truck.photos.first()
-    if first_photo:
-        return first_photo.image.url
+    photos = list(truck.photos.all())  # list(), not .first(): reuses the prefetch_related cache when present
+    if photos:
+        return photos[0].image.url
     if truck.photo:
         return truck.photo.url
     return None
@@ -129,7 +136,14 @@ class TruckListView(LoginRequiredMixin, View):
         from django.core.paginator import Paginator
         query = request.GET.get('q', '').strip()
 
-        trucks_qs = Truck.objects.all()
+        trucks_qs = Truck.objects.prefetch_related(
+            Prefetch('photos', queryset=TruckPhoto.objects.order_by('order')),
+            Prefetch(
+                'assignments',
+                queryset=TruckAssignment.objects.filter(unassigned_at__isnull=True).select_related('driver'),
+                to_attr='current_assignments',
+            ),
+        )
         if query:
             # year is numeric — cast to text so it can be matched with icontains
             # portably (Postgres rejects ILIKE directly against an integer column).
@@ -145,7 +159,7 @@ class TruckListView(LoginRequiredMixin, View):
         trucks_with_driver = []
         for truck in page_obj:
             truck.cover_photo_url = get_cover_photo_url(truck)
-            trucks_with_driver.append((truck, get_current_driver(truck.pk)))
+            trucks_with_driver.append((truck, get_current_driver_prefetched(truck)))
         if is_ajax_request(request):
             return infinite_scroll_json(request, 'trucks/_rows.html', {'trucks_with_driver': trucks_with_driver}, page_obj)
         return render(request, 'trucks/list.html', {
