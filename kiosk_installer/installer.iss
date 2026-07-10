@@ -103,7 +103,7 @@ begin
       'KIOSK_SERVER_URL=' + ServerPage.Values[0] + #13#10 +
       'KIOSK_DEVICE_TOKEN=' + ServerPage.Values[1] + #13#10 +
       'KIOSK_DEVICE_ID=0' + #13#10 +
-      'KIOSK_TEMPLATE_REFRESH_SECONDS=300' + #13#10 +
+      'KIOSK_TEMPLATE_REFRESH_SECONDS=30' + #13#10 +
       'KIOSK_ENROLL_POLL_SECONDS=5' + #13#10 +
       'KIOSK_HTTP_TIMEOUT=10' + #13#10;
     SaveStringToFile(DataDir + '\.env', EnvContent, False);

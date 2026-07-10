@@ -19,15 +19,17 @@ Config (.env file next to this script):
     KIOSK_SERVER_URL=https://your-server.example.com
     KIOSK_DEVICE_TOKEN=<raw token from `manage.py kiosk_device create`>
     KIOSK_DEVICE_ID=0
-    KIOSK_TEMPLATE_REFRESH_SECONDS=300
+    KIOSK_TEMPLATE_REFRESH_SECONDS=30
     KIOSK_ENROLL_POLL_SECONDS=5
     KIOSK_HTTP_TIMEOUT=10
 
 Known v1 limitations (see docs/kiosk_deployment.md):
     - A scan that fails to reach the server (network error) is logged and
       dropped — there is no offline queue/retry.
-    - A newly enrolled/reactivated employee may take up to
-      KIOSK_TEMPLATE_REFRESH_SECONDS to become recognizable on this kiosk.
+    - A newly enrolled/reactivated/deleted employee's fingerprint may take
+      up to KIOSK_TEMPLATE_REFRESH_SECONDS to become (un)recognizable on
+      this kiosk — it matches purely against the last locally cached
+      template set, independent of the server's current state.
 """
 from __future__ import annotations
 
@@ -98,7 +100,7 @@ def _required_env(name: str) -> str:
 SERVER_URL = _required_env("KIOSK_SERVER_URL").rstrip('/')
 DEVICE_TOKEN = _required_env("KIOSK_DEVICE_TOKEN")
 DEVICE_ID = int(os.environ["KIOSK_DEVICE_ID"]) if os.environ.get("KIOSK_DEVICE_ID") else None
-REFRESH_SECONDS = int(os.environ.get("KIOSK_TEMPLATE_REFRESH_SECONDS", "300"))
+REFRESH_SECONDS = int(os.environ.get("KIOSK_TEMPLATE_REFRESH_SECONDS", "30"))
 ENROLL_POLL_SECONDS = float(os.environ.get("KIOSK_ENROLL_POLL_SECONDS", "5"))
 HTTP_TIMEOUT = float(os.environ.get("KIOSK_HTTP_TIMEOUT", "10"))
 
@@ -145,11 +147,15 @@ class TemplateCache:
     Periodically refreshed local cache of (employee_id, template_bytes),
     used for local 1:N identification via BiometricService.identify().
 
-    Refresh interval: KIOSK_TEMPLATE_REFRESH_SECONDS (default 300s / 5 min).
-    A just-deactivated employee may still match locally for up to that
-    window, but the server's /api/scan/ endpoint independently rejects
-    inactive employees (409), so no attendance is ever recorded for them
-    regardless of cache staleness (defense in depth).
+    Refresh interval: KIOSK_TEMPLATE_REFRESH_SECONDS (default 30s). A
+    just-deactivated (or deleted-biometric) employee may still match
+    locally for up to that window, but the server's /api/scan/ endpoint
+    independently rejects inactive employees (409), so no attendance is
+    ever recorded for a *deactivated* employee regardless of cache
+    staleness (defense in depth) — however an *active* employee whose
+    fingerprint was merely deleted (still allowed to re-enroll) has no
+    such server-side backstop today: a stale local match still records a
+    scan for them until the next refresh.
     """
 
     def __init__(self) -> None:

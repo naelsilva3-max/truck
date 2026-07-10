@@ -66,7 +66,7 @@ python manage.py kiosk_device revoke --id 3
    KIOSK_SERVER_URL=https://seu-servidor.exemplo.com
    KIOSK_DEVICE_TOKEN=<token copiado no passo 1>
    KIOSK_DEVICE_ID=0
-   KIOSK_TEMPLATE_REFRESH_SECONDS=300
+   KIOSK_TEMPLATE_REFRESH_SECONDS=30
    KIOSK_ENROLL_POLL_SECONDS=5
    KIOSK_HTTP_TIMEOUT=10
    ```
@@ -132,7 +132,7 @@ Atualize o `.env` do quiosque com o novo token e reinicie o serviço/processo.
 ## 8. Limitações conhecidas (v1)
 
 - **Sem fila offline**: se o quiosque perder conexão com o servidor no momento de um toque, o evento é registrado no log local e **descartado** — não há retentativa automática nem fila de reenvio.
-- **Atraso de sincronização**: um funcionário recém-cadastrado ou reativado pode levar até `KIOSK_TEMPLATE_REFRESH_SECONDS` (padrão 5 min) para ser reconhecido pelo quiosque.
+- **Atraso de sincronização**: um funcionário recém-cadastrado, reativado, ou que teve a biometria apagada, pode levar até `KIOSK_TEMPLATE_REFRESH_SECONDS` (padrão 30s) para o quiosque (des)reconhecê-lo — o quiosque só compara contra o último cache local, sem saber do estado atual do servidor entre sincronizações. Funcionário **desativado** (`is_active=False`) tem uma segunda barreira no servidor (`/api/scan/` rejeita com 409 mesmo se o quiosque ainda reconhecer localmente); funcionário ativo com biometria apenas apagada não tem essa segunda barreira hoje.
 - **Sem interface de gestão de dispositivos**: criação/revogação de tokens é só via linha de comando (`kiosk_device`), sem tela administrativa.
 - **Pedidos de cadastro remoto (seção 4.1) não expiram sozinhos**: se o quiosque ficar offline por muito tempo, o pedido fica pendente indefinidamente até alguém cancelar manualmente pela página do site.
 - **Um único quiosque físico é assumido**: não há coordenação se mais de um `kiosk_agent.py listen` fizer polling da mesma fila de pedidos ao mesmo tempo (o endpoint só devolve o pedido mais antigo, sem "reservá-lo").
