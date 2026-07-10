@@ -8,6 +8,70 @@
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
+  {% comment %}
+  Live polling: periodically checks a "since" endpoint and prepends any
+  new rows to a tbody, so a second user sees data another user just
+  inserted (e.g. a kiosk clock-in) without reloading the page. Opt in
+  per-page by calling window.startLivePoll({tbodyId, url}).
+
+  Defined here, before {% block content %}, on purpose: child templates
+  call window.startLivePoll(...) from an inline <script> placed inside
+  the content block, which sits earlier in the DOM than anything at the
+  bottom of this file. Browsers run inline scripts in document order, so
+  defining this after the content block meant every call site was
+  invoking a function that didn't exist yet (silent no-op — polling
+  never actually started, no matter how long you waited).
+  {% endcomment %}
+  <script>
+  window.startLivePoll = function (opts) {
+    var tbody = document.getElementById(opts.tbodyId);
+    if (!tbody) return;
+
+    var errorAnchor = tbody.closest('table') || tbody;
+    var intervalMs = opts.intervalMs || 5000;
+    var firstRow = tbody.querySelector('tr[data-timestamp]');
+    var since = firstRow ? firstRow.getAttribute('data-timestamp') : new Date().toISOString();
+    var polling = false;
+    var consecutiveFailures = 0;
+
+    function tick() {
+      if (polling || document.hidden) return;
+      polling = true;
+      var url = opts.url + (opts.url.indexOf('?') === -1 ? '?' : '&') + 'since=' + encodeURIComponent(since);
+      fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.count > 0) {
+            tbody.insertAdjacentHTML('afterbegin', data.html);
+            since = data.newest;
+          }
+          polling = false;
+          consecutiveFailures = 0;
+          if (window.hideFetchError) window.hideFetchError(errorAnchor);
+        })
+        .catch(function () {
+          polling = false;
+          consecutiveFailures++;
+          if (consecutiveFailures >= 2 && window.showFetchError) {
+            window.showFetchError(errorAnchor, 'Atualização automática indisponível no momento (verifique sua conexão).');
+          }
+        });
+    }
+
+    setInterval(tick, intervalMs);
+
+    // tick() already no-ops while the tab is hidden (document.hidden), but
+    // without this it can take a while to notice you're back: browsers
+    // throttle setInterval heavily in background tabs, so the first tick
+    // after refocusing can be delayed well past intervalMs. Firing an
+    // immediate catch-up tick on refocus makes it feel instant again
+    // instead of "you have to reload the page".
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) tick();
+    });
+  };
+  </script>
+
   <nav class="navbar">
     <div class="navbar-brand">
       <a href="/">
@@ -339,62 +403,6 @@
 
     observer.observe(sentinel);
   })();
-  </script>
-
-  {% comment %}
-  Live polling: periodically checks a "since" endpoint and prepends any
-  new rows to a tbody, so a second user sees data another user just
-  inserted (e.g. a kiosk clock-in) without reloading the page. Opt in
-  per-page by calling window.startLivePoll({tbodyId, url}).
-  {% endcomment %}
-  <script>
-  window.startLivePoll = function (opts) {
-    var tbody = document.getElementById(opts.tbodyId);
-    if (!tbody) return;
-
-    var errorAnchor = tbody.closest('table') || tbody;
-    var intervalMs = opts.intervalMs || 5000;
-    var firstRow = tbody.querySelector('tr[data-timestamp]');
-    var since = firstRow ? firstRow.getAttribute('data-timestamp') : new Date().toISOString();
-    var polling = false;
-    var consecutiveFailures = 0;
-
-    function tick() {
-      if (polling || document.hidden) return;
-      polling = true;
-      var url = opts.url + (opts.url.indexOf('?') === -1 ? '?' : '&') + 'since=' + encodeURIComponent(since);
-      fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data.count > 0) {
-            tbody.insertAdjacentHTML('afterbegin', data.html);
-            since = data.newest;
-          }
-          polling = false;
-          consecutiveFailures = 0;
-          hideFetchError(errorAnchor);
-        })
-        .catch(function () {
-          polling = false;
-          consecutiveFailures++;
-          if (consecutiveFailures >= 2) {
-            showFetchError(errorAnchor, 'Atualização automática indisponível no momento (verifique sua conexão).');
-          }
-        });
-    }
-
-    setInterval(tick, intervalMs);
-
-    // tick() already no-ops while the tab is hidden (document.hidden), but
-    // without this it can take a while to notice you're back: browsers
-    // throttle setInterval heavily in background tabs, so the first tick
-    // after refocusing can be delayed well past intervalMs. Firing an
-    // immediate catch-up tick on refocus makes it feel instant again
-    // instead of "you have to reload the page".
-    document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) tick();
-    });
-  };
   </script>
 
   <script>
