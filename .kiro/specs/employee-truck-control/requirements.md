@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Este documento descreve os requisitos funcionais e não-funcionais do sistema **Employee & Truck Control**: uma aplicação web Django/Python para controle de ponto de funcionários via biometria digital (leitor ZKTeco ZK9500) e gestão de frota de caminhões com associação de motoristas.
+Este documento descreve os requisitos funcionais e não-funcionais do sistema **Expomarca**: uma aplicação web Django/Python para controle de ponto de funcionários via biometria digital (leitor ZKTeco ZK9500) e gestão de frota de caminhões com associação de motoristas.
 
 Os funcionários são entidades gerenciadas pelo sistema — não possuem login ou senha próprios. O acesso administrativo à interface web é feito por usuários do Django Admin. O sistema garante conformidade com a LGPD para dados biométricos e mantém logs imutáveis de ponto e associações.
 
@@ -10,7 +10,7 @@ Os funcionários são entidades gerenciadas pelo sistema — não possuem login 
 
 ## Glossary
 
-- **System**: O sistema web Django Employee & Truck Control.
+- **System**: O sistema web Django Expomarca.
 - **Employee**: Entidade cadastrada no sistema representando um funcionário da empresa. Não possui credenciais de acesso ao sistema.
 - **Admin**: Usuário autenticado no Django Admin com permissão de gerenciar funcionários, caminhões e associações.
 - **BiometricService**: Componente de software responsável pela comunicação com o leitor biométrico ZKTeco ZK9500.
