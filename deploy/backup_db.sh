@@ -4,9 +4,28 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-set -a
-source .env
-set +a
+source .venv/bin/activate
+
+# Le a config do banco pelas settings do Django (mesmo parser do .env que a
+# aplicacao usa) em vez de "source .env" -- o SECRET_KEY e outras chaves
+# podem conter caracteres que quebram um source direto em shell.
+mapfile -t DB_INFO < <(python -c "
+import django, os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'employee_truck_control.settings')
+django.setup()
+from django.conf import settings
+db = settings.DATABASES['default']
+print(db['NAME'])
+print(db['USER'])
+print(db['PASSWORD'])
+print(db['HOST'])
+print(db['PORT'])
+")
+DB_NAME="${DB_INFO[0]}"
+DB_USER="${DB_INFO[1]}"
+DB_PASSWORD="${DB_INFO[2]}"
+DB_HOST="${DB_INFO[3]}"
+DB_PORT="${DB_INFO[4]}"
 
 mkdir -p backups
 STAMP=$(date +%Y%m%d_%H%M%S)
