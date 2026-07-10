@@ -1,7 +1,48 @@
+import os
+
+from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import FileResponse, Http404, HttpResponse
+from django.views import View
 from django.views.generic import TemplateView
 
 from trucks.models import Truck
+
+
+class ProtectedMediaView(LoginRequiredMixin, View):
+    """
+    Serves files under MEDIA_ROOT (employee/visitor/truck photos and
+    identity documents) to authenticated users only.
+
+    LGPD: these were previously served directly by nginx with no auth check
+    at all, so anyone with a guessable/leaked URL could view an RG or CNH
+    photo without logging in. Any authenticated user can still view any
+    file here (matching the existing page-level access — every detail page
+    that shows these photos is itself just LoginRequiredMixin), this view
+    only closes the direct-URL bypass around that.
+
+    In production, hands off the actual byte-serving to nginx via
+    X-Accel-Redirect (an `internal;`-only nginx location — see
+    deploy/nginx.conf) so Django only pays for the auth check, not for
+    streaming file contents. In DEBUG (local dev, no nginx in front),
+    streams the file directly instead.
+    """
+
+    def get(self, request, path):
+        media_root = os.path.realpath(str(settings.MEDIA_ROOT))
+        full_path = os.path.realpath(os.path.join(media_root, path))
+        if full_path != media_root and not full_path.startswith(media_root + os.sep):
+            raise Http404  # path traversal attempt (e.g. ../../settings.py)
+
+        if settings.DEBUG:
+            if not os.path.isfile(full_path):
+                raise Http404
+            return FileResponse(open(full_path, 'rb'))
+
+        response = HttpResponse()
+        response['X-Accel-Redirect'] = '/protected-media/' + path
+        del response['Content-Type']  # let nginx set it from the file itself
+        return response
 
 
 class ReportsIndexView(LoginRequiredMixin, TemplateView):

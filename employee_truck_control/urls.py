@@ -1,12 +1,10 @@
 from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import path, include
-from django.conf import settings
-from django.conf.urls.static import static
 
 from accounts.views import CPFLoginView
 from attendance.views import AttendanceCalendarView, PresenceHistoryView
-from employee_truck_control.views import ReportsIndexView
+from employee_truck_control.views import ProtectedMediaView, ReportsIndexView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -24,6 +22,10 @@ urlpatterns = [
     path("trucks/", include("trucks.urls")),
     path("biometric/", include("biometric.urls")),
     path("visitors/", include("visitors.urls")),
+    # Photos/documents: authenticated users only (see ProtectedMediaView) —
+    # replaces Django's DEBUG-only static() media serving and nginx's old
+    # public alias, in every environment.
+    path("media/<path:path>", ProtectedMediaView.as_view(), name="protected_media"),
     # Redirect root to employee list
     path("", lambda request: redirect("employees:list"), name="root"),
-] + (static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) if settings.DEBUG else [])
+]
