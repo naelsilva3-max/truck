@@ -310,10 +310,12 @@
   })();
   </script>
 
-  {# Live polling: periodically checks a "since" endpoint and prepends any
-     new rows to a tbody, so a second user sees data another user just
-     inserted (e.g. a kiosk clock-in) without reloading the page. Opt in
-     per-page by calling window.startLivePoll({tbodyId, url}). #}
+  {% comment %}
+  Live polling: periodically checks a "since" endpoint and prepends any
+  new rows to a tbody, so a second user sees data another user just
+  inserted (e.g. a kiosk clock-in) without reloading the page. Opt in
+  per-page by calling window.startLivePoll({tbodyId, url}).
+  {% endcomment %}
   <script>
   window.startLivePoll = function (opts) {
     var tbody = document.getElementById(opts.tbodyId);
