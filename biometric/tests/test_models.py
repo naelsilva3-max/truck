@@ -49,6 +49,51 @@ class TestBiometricTemplateModel:
 
 
 @pytest.mark.django_db
+class TestBiometricTemplateEncryptionAtRest:
+    def test_raw_db_value_is_not_plaintext(self):
+        from django.db import connection
+
+        emp = make_employee()
+        plaintext = b"fingerprint-template-bytes" * 5
+        bt = BiometricTemplate.objects.create(employee=emp, template=plaintext)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f'SELECT template FROM {BiometricTemplate._meta.db_table} WHERE id = %s', [bt.pk]
+            )
+            raw_stored = bytes(cursor.fetchone()[0])
+
+        assert raw_stored != plaintext
+        assert plaintext not in raw_stored
+
+    def test_round_trip_via_orm_returns_original_bytes(self):
+        emp = make_employee()
+        plaintext = b"fingerprint-template-bytes" * 5
+        bt = BiometricTemplate.objects.create(employee=emp, template=plaintext)
+
+        fetched = BiometricTemplate.objects.get(pk=bt.pk)
+        assert bytes(fetched.template) == plaintext
+
+    def test_legacy_plaintext_row_still_readable(self):
+        """Rows written before encryption was introduced (raw plaintext in
+        the DB) must still decode correctly via the InvalidToken fallback."""
+        from django.db import connection
+
+        emp = make_employee()
+        bt = BiometricTemplate.objects.create(employee=emp, template=b"placeholder" * 5)
+
+        plaintext = b"legacy-unencrypted-bytes" * 5
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f'UPDATE {BiometricTemplate._meta.db_table} SET template = %s WHERE id = %s',
+                [plaintext, bt.pk],
+            )
+
+        fetched = BiometricTemplate.objects.get(pk=bt.pk)
+        assert bytes(fetched.template) == plaintext
+
+
+@pytest.mark.django_db
 class TestKioskDeviceIssue:
     def test_issue_creates_active_device(self):
         device, raw_token = KioskDevice.issue(name="Recepção - Teste")

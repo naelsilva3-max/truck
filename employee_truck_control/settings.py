@@ -39,6 +39,21 @@ ALLOWED_HOSTS = os.environ.get(
     "127.0.0.1 localhost naelsilva.pythonanywhere.com",
 ).split()
 
+# Encrypts BiometricTemplate.template at rest (LGPD — fingerprint data is
+# sensitive personal data). Must be a valid Fernet key
+# (cryptography.fernet.Fernet.generate_key()).
+BIOMETRIC_ENCRYPTION_KEY = os.environ.get("BIOMETRIC_ENCRYPTION_KEY")
+if not BIOMETRIC_ENCRYPTION_KEY:
+    if DEBUG:
+        # Fixed dev-only key so local biometric data survives across runs.
+        # NEVER use this in production — generate a real one per environment.
+        BIOMETRIC_ENCRYPTION_KEY = "5b7ja9XsxeBNuW3fM9RkpEfJ5BW52KaVG7LnG67BurI="
+    else:
+        raise RuntimeError(
+            "BIOMETRIC_ENCRYPTION_KEY environment variable is not set. "
+            "Set it before starting the server in production."
+        )
+
 # ---------------------------------------------------------------------------
 # Security Headers & SSL
 # These settings are forced OFF when DEBUG=True for local development,

@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from employee_truck_control.fields import EncryptedBinaryField
 from employees.models import Employee
 
 
@@ -17,9 +18,9 @@ class BiometricTemplate(models.Model):
         verbose_name='Funcionário',
         help_text='Funcionário associado a este template biométrico.',
     )
-    template = models.BinaryField(
+    template = EncryptedBinaryField(
         verbose_name='Template',
-        help_text='Dados binários do template biométrico (máx. 10 KB).',
+        help_text='Dados binários do template biométrico (máx. 10 KB), criptografado em repouso.',
     )
     finger_index = models.SmallIntegerField(
         default=0,
