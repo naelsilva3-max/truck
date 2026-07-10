@@ -56,3 +56,31 @@ class BiometricTemplateProtectionMiddleware:
         finally:
             _local.active = False
         return response
+
+
+# All first-party resources are same-origin; every <script>/<style> in the
+# templates is inline (no build step / bundler), so 'unsafe-inline' is kept
+# for script-src/style-src rather than breaking the app. blob: is required
+# for the camera-capture preview (canvas.toBlob + createObjectURL).
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' blob: data:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none';"
+)
+
+
+class ContentSecurityPolicyMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        response.headers.setdefault('Content-Security-Policy', CONTENT_SECURITY_POLICY)
+        return response

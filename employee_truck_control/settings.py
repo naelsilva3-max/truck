@@ -106,6 +106,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # LGPD: blocks BiometricTemplate objects from being passed to templates
     "employee_truck_control.middleware.BiometricTemplateProtectionMiddleware",
+    "employee_truck_control.middleware.ContentSecurityPolicyMiddleware",
 ]
 
 ROOT_URLCONF = "employee_truck_control.urls"
