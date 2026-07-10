@@ -17,6 +17,18 @@ _IMAGE_SIGNATURES = [
 MAX_IMAGE_SIZE_MB = 5
 MAX_IMAGE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
 
+_PDF_SIGNATURE = b'%PDF-'
+
+
+def _matches_image_signature(header: bytes) -> bool:
+    for signature, fmt in _IMAGE_SIGNATURES:
+        if header[:len(signature)] == signature:
+            # Extra check for WEBP: bytes 8-12 must be b'WEBP'
+            if fmt == 'WEBP' and header[8:12] != b'WEBP':
+                continue
+            return True
+    return False
+
 
 def validate_image_file(file):
     """
@@ -42,16 +54,42 @@ def validate_image_file(file):
     header = file.read(12)
     file.seek(0)
 
-    for signature, fmt in _IMAGE_SIGNATURES:
-        if header[:len(signature)] == signature:
-            # Extra check for WEBP: bytes 8-12 must be b'WEBP'
-            if fmt == 'WEBP' and header[8:12] != b'WEBP':
-                continue
-            return  # Valid image
+    if _matches_image_signature(header):
+        return
 
     raise ValidationError(
         'O arquivo enviado não é uma imagem válida. '
         'Formatos aceitos: JPEG, PNG, GIF, WEBP.'
+    )
+
+
+def validate_image_or_pdf_file(file):
+    """
+    Same as validate_image_file, but also accepts a real PDF (checked via
+    its %PDF- magic bytes). Used for document photos, which may be either a
+    photographed ID (image) or a scanned document (PDF).
+    """
+    if file is None:
+        return
+
+    if file.size > MAX_IMAGE_BYTES:
+        raise ValidationError(
+            f'O arquivo é muito grande ({file.size // (1024*1024)} MB). '
+            f'O tamanho máximo permitido é {MAX_IMAGE_SIZE_MB} MB.'
+        )
+
+    file.seek(0)
+    header = file.read(12)
+    file.seek(0)
+
+    if header[:len(_PDF_SIGNATURE)] == _PDF_SIGNATURE:
+        return
+    if _matches_image_signature(header):
+        return
+
+    raise ValidationError(
+        'O arquivo enviado não é uma imagem nem um PDF válido. '
+        'Formatos aceitos: JPEG, PNG, GIF, WEBP, PDF.'
     )
 
 

@@ -1,16 +1,25 @@
 (function () {
-  function setState(box, state) {
+  function isPdfFile(file) {
+    return file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  }
+
+  function setState(box, state, showingPdf) {
     var placeholder = box.querySelector('.camera-placeholder');
     var video = box.querySelector('.camera-video');
     var snapshot = box.querySelector('.camera-snapshot');
+    var pdfPreview = box.querySelector('.camera-pdf-preview');
     var startBtn = box.querySelector('.camera-btn-start');
     var fileBtn = box.querySelector('.camera-btn-file');
     var captureBtn = box.querySelector('.camera-btn-capture');
     var retakeBtn = box.querySelector('.camera-btn-retake');
 
+    var showSnapshot = state === 'captured' && !showingPdf;
+    var showPdf = state === 'captured' && showingPdf;
+
     placeholder.style.display = state === 'idle' ? 'flex' : 'none';
     video.style.display = state === 'live' ? 'block' : 'none';
-    snapshot.style.display = state === 'captured' ? 'block' : 'none';
+    snapshot.style.display = showSnapshot ? 'block' : 'none';
+    if (pdfPreview) pdfPreview.style.display = showPdf ? 'block' : 'none';
     startBtn.style.display = state === 'idle' ? 'inline-flex' : 'none';
     if (fileBtn) fileBtn.style.display = state === 'idle' ? 'inline-flex' : 'none';
     captureBtn.style.display = state === 'live' ? 'inline-flex' : 'none';
@@ -33,6 +42,8 @@
     var video = box.querySelector('.camera-video');
     var canvas = box.querySelector('.camera-canvas');
     var snapshot = box.querySelector('.camera-snapshot');
+    var pdfEmbed = box.querySelector('.camera-pdf-embed');
+    var pdfOpenLink = box.querySelector('.camera-pdf-open-link');
     var startBtn = box.querySelector('.camera-btn-start');
     var fileBtn = box.querySelector('.camera-btn-file');
     var captureBtn = box.querySelector('.camera-btn-capture');
@@ -40,12 +51,37 @@
     var input = box.querySelector('input[type="file"]');
     var facing = box.dataset.facing || 'user';
     var stream = null;
+    var currentObjectUrl = null;
 
     function stopStream() {
       if (stream) {
         stream.getTracks().forEach(function (track) { track.stop(); });
         stream = null;
       }
+    }
+
+    function revokeCurrentObjectUrl() {
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
+    }
+
+    function showImagePreview(objectUrl) {
+      revokeCurrentObjectUrl();
+      currentObjectUrl = objectUrl;
+      snapshot.src = objectUrl;
+      setState(box, 'captured', false);
+    }
+
+    // PDFs can't come from the webcam, only from a real file pick -- this
+    // is only ever called from the file <input> change handler below.
+    function showPdfPreview(objectUrl) {
+      revokeCurrentObjectUrl();
+      currentObjectUrl = objectUrl;
+      if (pdfEmbed) pdfEmbed.setAttribute('src', objectUrl);
+      if (pdfOpenLink) pdfOpenLink.setAttribute('href', objectUrl);
+      setState(box, 'captured', true);
     }
 
     startBtn.addEventListener('click', function () {
@@ -79,12 +115,12 @@
       var file = input.files && input.files[0];
       if (!file) return;
       stopStream();
-      var previousUrl = snapshot.dataset.objectUrl;
-      if (previousUrl) URL.revokeObjectURL(previousUrl);
       var objectUrl = URL.createObjectURL(file);
-      snapshot.src = objectUrl;
-      snapshot.dataset.objectUrl = objectUrl;
-      setState(box, 'captured');
+      if (pdfEmbed && isPdfFile(file)) {
+        showPdfPreview(objectUrl);
+      } else {
+        showImagePreview(objectUrl);
+      }
     });
 
     captureBtn.addEventListener('click', function () {
@@ -100,23 +136,19 @@
         var dataTransfer = new DataTransfer();
         dataTransfer.items.add(file);
         input.files = dataTransfer.files;
-        var previousUrl = snapshot.dataset.objectUrl;
-        if (previousUrl) URL.revokeObjectURL(previousUrl);
-        var objectUrl = URL.createObjectURL(blob);
-        snapshot.src = objectUrl;
-        snapshot.dataset.objectUrl = objectUrl;
         stopStream();
-        setState(box, 'captured');
+        showImagePreview(URL.createObjectURL(blob));
       }, 'image/jpeg', 0.92);
     });
 
     retakeBtn.addEventListener('click', function () {
       input.value = '';
-      setState(box, 'idle');
+      revokeCurrentObjectUrl();
+      setState(box, 'idle', false);
       clearError(box);
     });
 
-    setState(box, 'idle');
+    setState(box, 'idle', false);
   }
 
   document.querySelectorAll('.camera-capture').forEach(initCameraCapture);

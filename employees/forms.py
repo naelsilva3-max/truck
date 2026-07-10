@@ -1,7 +1,7 @@
 from django import forms
 from django.utils import timezone
 
-from employee_truck_control.validators import validate_image_file
+from employee_truck_control.validators import validate_image_file, validate_image_or_pdf_file
 from .models import Employee
 
 
@@ -30,7 +30,7 @@ class EmployeeForm(forms.ModelForm):
             "is_driver": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "photo": forms.FileInput(attrs={"class": "camera-file-input", "accept": "image/*"}),
-            "document_photo": forms.FileInput(attrs={"class": "camera-file-input", "accept": "image/*"}),
+            "document_photo": forms.FileInput(attrs={"class": "camera-file-input", "accept": "image/*,application/pdf"}),
         }
         help_texts = {
             "name": "Nome completo do funcionário. Não pode ser vazio.",
@@ -44,7 +44,7 @@ class EmployeeForm(forms.ModelForm):
             "hire_date": "Data de admissão. Não pode ser uma data futura.",
             "is_driver": "Marque se o funcionário está habilitado a conduzir caminhões.",
             "is_active": "Desmarque para desativar o funcionário (soft-delete).",
-            "document_photo": "Imagem do documento de identificação (RG, CNH, etc.).",
+            "document_photo": "Imagem ou PDF do documento de identificação (RG, CNH, etc.).",
         }
         labels = {
             "name": "Nome", "role": "Cargo", "department": "Departamento",
@@ -82,5 +82,5 @@ class EmployeeForm(forms.ModelForm):
     def clean_document_photo(self):
         doc = self.cleaned_data.get("document_photo")
         if doc and hasattr(doc, "read"):
-            validate_image_file(doc)
+            validate_image_or_pdf_file(doc)
         return doc

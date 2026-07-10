@@ -136,6 +136,10 @@
             <div class="camera-placeholder">Câmera desligada</div>
             <video class="camera-video" autoplay playsinline muted></video>
             <img class="camera-snapshot" alt="Documento capturado">
+            <div class="camera-pdf-preview">
+              <embed class="camera-pdf-embed" type="application/pdf">
+              <a class="camera-pdf-open-link" href="#" target="_blank" rel="noopener">📄 Abrir PDF</a>
+            </div>
           </div>
           <canvas class="camera-canvas" hidden></canvas>
           <div class="camera-actions">
@@ -151,7 +155,11 @@
         {% if form.document_photo.help_text %}<small class="form-text">{{ form.document_photo.help_text }}</small>{% endif %}
         {% if form.instance.document_photo %}
           <div class="mt-2">
-            <img src="{{ form.instance.document_photo.url }}" alt="Documento atual" class="photo-thumb photo-thumb--150">
+            {% if form.instance.document_photo.name|lower|slice:"-4:" == '.pdf' %}
+              <a href="{{ form.instance.document_photo.url }}" target="_blank" rel="noopener" class="pdf-thumb-link">📄 Abrir PDF atual</a>
+            {% else %}
+              <img src="{{ form.instance.document_photo.url }}" alt="Documento atual" class="photo-thumb photo-thumb--150">
+            {% endif %}
             <p class="form-text">Documento atual (envie um arquivo ou capture um novo para substituir)</p>
           </div>
         {% endif %}

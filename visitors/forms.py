@@ -1,7 +1,7 @@
 from django import forms
 from django.utils import timezone
 
-from employee_truck_control.validators import validate_image_file
+from employee_truck_control.validators import validate_image_file, validate_image_or_pdf_file
 from employees.models import Employee
 from .models import Visitor, Visit
 
@@ -29,7 +29,7 @@ class VisitorForm(forms.ModelForm):
                 attrs={'class': 'camera-file-input', 'accept': 'image/*'}
             ),
             'document_photo': forms.FileInput(
-                attrs={'class': 'camera-file-input', 'accept': 'image/*'}
+                attrs={'class': 'camera-file-input', 'accept': 'image/*,application/pdf'}
             ),
             'phone': forms.TextInput(
                 attrs={'class': 'form-control', 'placeholder': '(99) 99999-9999'}
@@ -67,7 +67,7 @@ class VisitorForm(forms.ModelForm):
         }
         help_texts = {
             'photo': 'Foto do rosto do visitante.',
-            'document_photo': 'Imagem do documento de identificação (RG, CNH, etc.).',
+            'document_photo': 'Imagem ou PDF do documento de identificação (RG, CNH, etc.).',
             'cpf': 'Validado automaticamente.',
         }
 
@@ -106,7 +106,7 @@ class VisitorForm(forms.ModelForm):
     def clean_document_photo(self):
         doc = self.cleaned_data.get('document_photo')
         if doc and hasattr(doc, 'read'):
-            validate_image_file(doc)
+            validate_image_or_pdf_file(doc)
         return doc
 
     def clean(self):

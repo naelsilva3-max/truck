@@ -53,6 +53,47 @@ class TestVisitorFormPhotoValidation:
         form.is_valid()
         assert 'photo' not in form.errors
 
+    def test_accepts_pdf_document_photo(self):
+        pdf = SimpleUploadedFile('rg.pdf', b'%PDF-1.4\n%%EOF', content_type='application/pdf')
+        form = VisitorForm(data=_valid_form_data(), files={'document_photo': pdf})
+
+        form.is_valid()
+        assert 'document_photo' not in form.errors
+
+    def test_photo_field_still_rejects_pdf(self):
+        pdf = SimpleUploadedFile('face.pdf', b'%PDF-1.4\n%%EOF', content_type='application/pdf')
+        form = VisitorForm(data=_valid_form_data(), files={'photo': pdf})
+
+        assert not form.is_valid()
+        assert 'photo' in form.errors
+
+
+@pytest.mark.django_db
+class TestVisitorFormRendersWithDocumentVariants:
+    def test_create_form_renders(self):
+        user = User.objects.create_user(username='someone', password='pass')
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('visitors:create'))
+
+        assert response.status_code == 200
+        assert b'camera-pdf-preview' in response.content
+        assert b'camera-btn-file' in response.content  # was missing before this change
+
+    def test_edit_form_renders_with_existing_pdf_document(self):
+        user = User.objects.create_user(username='someone2', password='pass')
+        visitor = Visitor.objects.create(name='Doc Visitor')
+        visitor.document_photo.save('rg.pdf', SimpleUploadedFile('rg.pdf', b'%PDF-1.4\n%%EOF'), save=True)
+
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('visitors:update', kwargs={'pk': visitor.pk}))
+
+        assert response.status_code == 200
+        assert b'pdf-thumb-link' in response.content
+
 
 def make_user():
     return User.objects.create_user(username='plain', password='pass')

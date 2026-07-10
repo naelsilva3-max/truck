@@ -80,11 +80,11 @@ class Employee(models.Model):
         verbose_name='Foto',
         help_text='Foto de identificação do funcionário.',
     )
-    document_photo = models.ImageField(
+    document_photo = models.FileField(
         upload_to='employees/documents/',
         null=True, blank=True,
         verbose_name='Foto do Documento',
-        help_text='Imagem do documento de identificação do funcionário (RG, CNH, etc.).',
+        help_text='Imagem ou PDF do documento de identificação do funcionário (RG, CNH, etc.).',
     )
     created_at = models.DateTimeField(
         auto_now_add=True,

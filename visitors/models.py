@@ -19,11 +19,11 @@ class Visitor(models.Model):
         verbose_name='Foto do Rosto',
         help_text='Foto do rosto do visitante.',
     )
-    document_photo = models.ImageField(
+    document_photo = models.FileField(
         upload_to='visitors/documents/',
         null=True, blank=True,
         verbose_name='Foto do Documento',
-        help_text='Imagem do documento de identificação do visitante.',
+        help_text='Imagem ou PDF do documento de identificação do visitante.',
     )
     phone = models.CharField(
         max_length=20, blank=True,
