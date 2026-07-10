@@ -6,8 +6,10 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.cache import never_cache
@@ -72,8 +74,37 @@ class EmployeeListView(LoginRequiredMixin, ListView):
         ctx['recent_presence_events'] = recent_events[:self.RECENT_EVENTS_LIMIT]
         return ctx
 
+    LIVE_POLL_LIMIT = 50
+
+    def _poll_response(self, since):
+        """
+        Live-update endpoint: given `since` (an ISO timestamp of the newest
+        employee row the client already has), return employees created
+        after it — respecting the current search/show_inactive filters —
+        as rendered row HTML, so the client can prepend them without a
+        reload when someone else creates an employee.
+        """
+        since_dt = parse_datetime(since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            new_employees = []
+        else:
+            new_employees = list(
+                self.get_queryset().filter(created_at__gt=since_dt).order_by('-created_at')[:self.LIVE_POLL_LIMIT]
+            )
+
+        html = render_to_string('employees/_rows.html', {'employees': new_employees}, request=self.request)
+        newest = new_employees[0].created_at.isoformat() if new_employees else since
+
+        return JsonResponse({'html': html, 'count': len(new_employees), 'newest': newest})
+
     def render_to_response(self, context, **response_kwargs):
         if is_ajax_request(self.request):
+            since = self.request.GET.get('since')
+            if since:
+                return self._poll_response(since)
             return infinite_scroll_json(self.request, 'employees/_rows.html', context, context['page_obj'])
         return super().render_to_response(context, **response_kwargs)
 

@@ -45,6 +45,87 @@ def make_presence_events(employee, count, start_minutes_ago=0):
 
 
 @pytest.mark.django_db
+class TestEmployeeListLivePoll:
+    def test_since_returns_only_newer_employees(self):
+        user = make_user()
+        older = make_employee(name="Older Employee")
+        now = timezone.now()
+        Employee.objects.filter(pk=older.pk).update(created_at=now - timedelta(minutes=10))
+        newer = make_employee(name="Newer Employee")
+        Employee.objects.filter(pk=newer.pk).update(created_at=now)
+
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:list'),
+            {'since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['count'] == 1
+        assert 'Newer Employee' in body['html']
+        assert 'Older Employee' not in body['html']
+
+    def test_since_respects_search_query(self):
+        user = make_user()
+        now = timezone.now()
+        matching = make_employee(name="Special Match")
+        Employee.objects.filter(pk=matching.pk).update(created_at=now)
+        non_matching = make_employee(name="Nothing Here")
+        Employee.objects.filter(pk=non_matching.pk).update(created_at=now)
+
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:list'),
+            {'since': (now - timedelta(minutes=1)).isoformat(), 'q': 'Special'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['count'] == 1
+        assert 'Special Match' in body['html']
+
+    def test_since_excludes_inactive_by_default(self):
+        user = make_user()
+        now = timezone.now()
+        inactive = make_employee(name="Inactive One", is_active=False)
+        Employee.objects.filter(pk=inactive.pk).update(created_at=now)
+
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:list'),
+            {'since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['count'] == 0
+
+    def test_requires_login(self):
+        client = Client()
+        response = client.get(reverse('employees:list'), {'since': timezone.now().isoformat()})
+        assert response.status_code == 302
+
+    def test_renders_with_zero_employees(self):
+        user = make_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('employees:list'))
+
+        assert response.status_code == 200
+        assert b'infinite-tbody' in response.content
+        assert b'startLivePoll' in response.content
+
+
+@pytest.mark.django_db
 class TestEmployeeListHistoryWidget:
     def test_shows_at_most_15_events(self):
         user = make_user()

@@ -31,7 +31,6 @@
       <a href="{% url 'employees:list' %}{% if show_inactive %}?show_inactive=1{% endif %}" class="btn btn--outline">Limpar</a>
       {% endif %}
     </form>
-    {% if employees %}
     {% if query %}<p class="text-muted mb-2">Resultados para "{{ query }}".</p>{% endif %}
     <div class="table-responsive">
       <table class="table">
@@ -48,17 +47,26 @@
           </tr>
         </thead>
         {% include 'partials/_infinite_scroll_body.html' with rows_template='employees/_rows.html' %}
-    {% elif query %}
-    <div class="empty-state">
-      <p>Nenhum funcionário encontrado para "{{ query }}".</p>
-      <a href="{% url 'employees:list' %}{% if show_inactive %}?show_inactive=1{% endif %}" class="btn btn--outline">Limpar busca</a>
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <p>Nenhum funcionário cadastrado ainda.</p>
-      <a href="{% url 'employees:create' %}" class="btn btn--primary">Cadastrar primeiro funcionário</a>
-    </div>
+    {% if not employees %}
+      {% if query %}
+      <div class="empty-state">
+        <p>Nenhum funcionário encontrado para "{{ query }}".</p>
+        <a href="{% url 'employees:list' %}{% if show_inactive %}?show_inactive=1{% endif %}" class="btn btn--outline">Limpar busca</a>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <p>Nenhum funcionário cadastrado ainda.</p>
+        <a href="{% url 'employees:create' %}" class="btn btn--primary">Cadastrar primeiro funcionário</a>
+      </div>
+      {% endif %}
     {% endif %}
+
+    <script>
+    window.startLivePoll({
+      tbodyId: 'infinite-tbody',
+      url: '{% url "employees:list" %}?{% if show_inactive %}show_inactive=1&{% endif %}{% if query %}q={{ query|urlencode }}{% endif %}'
+    });
+    </script>
   </div>
 
   <div class="employees-side-col">
