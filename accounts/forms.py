@@ -1,6 +1,8 @@
 import re
 
+from django import forms
 from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.models import User
 
 from accounts.models import UserProfile
 
@@ -25,3 +27,19 @@ class CPFOrUsernameAuthenticationForm(AuthenticationForm):
                 self.cleaned_data['username'] = profile.user.username
 
         return super().clean()
+
+
+class EmailUpdateForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ['email']
+        widgets = {
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'required': True}),
+        }
+        labels = {'email': 'Email'}
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].strip()
+        if User.objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError('Já existe um usuário cadastrado com este email.')
+        return email

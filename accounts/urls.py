@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    MyAccountView,
     ResendVerificationView,
     SystemLogView,
     UserChangeRoleView,
@@ -12,6 +13,7 @@ from .views import (
 app_name = 'accounts'
 
 urlpatterns = [
+    path('my-account/', MyAccountView.as_view(), name='my_account'),
     path('users/', UserManageView.as_view(), name='manage_users'),
     path('users/new/', UserCreateView.as_view(), name='create_user'),
     path('users/<int:pk>/toggle/', UserToggleActiveView.as_view(), name='toggle_user'),

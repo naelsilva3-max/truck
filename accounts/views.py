@@ -1,6 +1,9 @@
 import re
 
 from django.contrib import messages
+from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
 from django.contrib.auth.views import LoginView
 from django.core.exceptions import ValidationError
@@ -10,7 +13,7 @@ from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 
 from accounts.emails import send_verification_email
-from accounts.forms import CPFOrUsernameAuthenticationForm
+from accounts.forms import CPFOrUsernameAuthenticationForm, EmailUpdateForm
 from accounts.logging import log_action
 from accounts.mixins import MasterRequiredMixin
 from accounts.models import SystemLog, UserProfile
@@ -29,6 +32,42 @@ class CPFLoginView(LoginView):
         context = super().get_context_data(**kwargs)
         context['login_mode'] = self.request.POST.get('login_mode') or self.request.GET.get('mode', 'cpf')
         return context
+
+
+class MyAccountView(LoginRequiredMixin, View):
+    template_name = 'accounts/my_account.html'
+
+    def get(self, request):
+        context = {
+            'email_form': EmailUpdateForm(instance=request.user),
+            'password_form': PasswordChangeForm(request.user),
+        }
+        return render(request, self.template_name, context)
+
+    def post(self, request):
+        email_form = EmailUpdateForm(instance=request.user)
+        password_form = PasswordChangeForm(request.user)
+
+        if 'update_email' in request.POST:
+            email_form = EmailUpdateForm(request.POST, instance=request.user)
+            if email_form.is_valid():
+                email_form.save()
+                log_action(request, SystemLog.ACTION_UPDATE, 'Email da própria conta atualizado')
+                messages.success(request, 'Email atualizado com sucesso.')
+                return redirect('accounts:my_account')
+        elif 'change_password' in request.POST:
+            password_form = PasswordChangeForm(request.user, request.POST)
+            if password_form.is_valid():
+                password_form.save()
+                update_session_auth_hash(request, password_form.user)
+                log_action(request, SystemLog.ACTION_UPDATE, 'Senha da própria conta atualizada')
+                messages.success(request, 'Senha atualizada com sucesso.')
+                return redirect('accounts:my_account')
+
+        return render(request, self.template_name, {
+            'email_form': email_form,
+            'password_form': password_form,
+        })
 
 
 class UserCreateView(MasterRequiredMixin, View):
