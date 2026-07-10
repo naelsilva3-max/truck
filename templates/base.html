@@ -29,8 +29,26 @@
 
     var errorAnchor = tbody.closest('table') || tbody;
     var intervalMs = opts.intervalMs || 5000;
-    var firstRow = tbody.querySelector('tr[data-timestamp]');
-    var since = firstRow ? firstRow.getAttribute('data-timestamp') : new Date().toISOString();
+
+    // The newest-so-far cursor must be the MAX data-timestamp among all
+    // rows already on the page, not just the first row in the tbody. That
+    // shortcut only works for tables sorted newest-first (e.g. a log). For
+    // tables sorted some other way (employees/visitors by name, users by
+    // username, trucks by plate), the first row can easily be an OLDER
+    // record than others further down -- starting from its timestamp made
+    // the very next poll think already-visible newer rows were new again,
+    // duplicating them in the DOM (confusing, but harmless to the data
+    // itself: a page reload throws away the duplicated DOM and re-renders
+    // correctly from the database).
+    var since = (function () {
+      var rows = tbody.querySelectorAll('tr[data-timestamp]');
+      var newest = null;
+      for (var i = 0; i < rows.length; i++) {
+        var ts = rows[i].getAttribute('data-timestamp');
+        if (newest === null || new Date(ts) > new Date(newest)) newest = ts;
+      }
+      return newest || new Date().toISOString();
+    })();
     var polling = false;
     var consecutiveFailures = 0;
 
