@@ -48,9 +48,13 @@
         <th>Documento</th>
         <td>
           {% if visit.visitor.document_photo %}
-            <img src="{{ visit.visitor.document_photo.url }}" alt="Documento" class="photo-thumb photo-thumb--200 cursor-zoom" onclick="openZoomableLightbox(this.src)" title="Clique para ampliar">
-            <br>
-            <small>Clique na imagem para ampliar</small>
+            {% if visit.visitor.document_photo.name|lower|slice:"-4:" == '.pdf' %}
+              <a href="{{ visit.visitor.document_photo.url }}" target="_blank" rel="noopener" class="pdf-thumb-link">📄 Abrir PDF</a>
+            {% else %}
+              <img src="{{ visit.visitor.document_photo.url }}" alt="Documento" class="photo-thumb photo-thumb--200 cursor-zoom" onclick="openZoomableLightbox(this.src)" title="Clique para ampliar">
+              <br>
+              <small>Clique na imagem para ampliar</small>
+            {% endif %}
           {% else %}
             <span class="badge badge--secondary">Sem foto do documento</span>
           {% endif %}

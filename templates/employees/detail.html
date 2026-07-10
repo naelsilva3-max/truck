@@ -71,7 +71,11 @@
     <div class="detail-item">
       <dt>Foto do Documento</dt>
       <dd>
-        <img src="{{ employee.document_photo.url }}" alt="Documento de {{ employee.name }}" class="photo-thumb photo-thumb--200 cursor-zoom" onclick="openLightbox(this.src)">
+        {% if employee.document_photo.name|lower|slice:"-4:" == '.pdf' %}
+          <a href="{{ employee.document_photo.url }}" target="_blank" rel="noopener" class="pdf-thumb-link">📄 Abrir PDF</a>
+        {% else %}
+          <img src="{{ employee.document_photo.url }}" alt="Documento de {{ employee.name }}" class="photo-thumb photo-thumb--200 cursor-zoom" onclick="openLightbox(this.src)">
+        {% endif %}
       </dd>
     </div>
     {% endif %}
