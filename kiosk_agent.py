@@ -38,6 +38,7 @@ import base64
 import logging
 import logging.handlers
 import os
+import queue
 import sys
 import threading
 import time
@@ -285,42 +286,78 @@ def _check_and_fulfill_enroll_request(listener: BiometricListener, service: Biom
             logger.error("Não foi possível retomar a escuta normal após o pedido remoto: %s", exc)
 
 
-def _notify_scan_success(employee_name: str, direction: str) -> None:
-    """
-    Give immediate on-screen + audible feedback for a successful scan.
+_notify_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
+_notify_worker_started = False
+_notify_worker_lock = threading.Lock()
 
-    `kiosk_agent_service.exe` (the Scheduled Task build) runs with no
-    console, so without this the person at the reader has no way to know
-    the touch actually registered. Runs in its own daemon thread so it
-    never blocks `on_template`/the listener loop while waiting to be
-    dismissed (or to time out).
-    """
-    if sys.platform != "win32":
-        return
+# Auto-dismiss delay for the fullscreen notice, in milliseconds.
+NOTICE_DISPLAY_MS = 3500
 
-    def _show() -> None:
+
+def _show_fullscreen_notice(employee_name: str, direction: str) -> None:
+    import tkinter as tk
+
+    is_in = direction == "IN"
+    bg = "#1e7e34" if is_in else "#b02a37"  # green for entrada, red for saída
+
+    root = tk.Tk()
+    root.attributes("-fullscreen", True)
+    root.attributes("-topmost", True)
+    root.configure(bg=bg)
+    root.config(cursor="none")
+
+    tk.Label(
+        root, text=employee_name, font=("Segoe UI", 96, "bold"), fg="white", bg=bg,
+    ).pack(expand=True)
+    tk.Label(
+        root, text="ENTRADA REGISTRADA" if is_in else "SAÍDA REGISTRADA",
+        font=("Segoe UI", 64, "bold"), fg="white", bg=bg,
+    ).pack(expand=True)
+
+    # Any key/click dismisses early; otherwise it closes itself.
+    root.bind("<Button-1>", lambda _e: root.destroy())
+    root.bind("<Key>", lambda _e: root.destroy())
+    root.after(NOTICE_DISPLAY_MS, root.destroy)
+    root.focus_force()
+    root.mainloop()
+
+
+def _notify_worker() -> None:
+    while True:
+        employee_name, direction = _notify_queue.get()
         try:
             import winsound
             winsound.Beep(1500, 200)
         except Exception:
             logger.exception("Falha ao tocar o som de confirmação.")
         try:
-            import ctypes
-            label = "Entrada" if direction == "IN" else "Saída"
-            text = f"{employee_name}\n{label} registrada"
-            MB_ICONINFORMATION = 0x40
-            MB_TOPMOST = 0x40000
-            TIMEOUT_MS = 4000
-            # MessageBoxTimeoutW is undocumented but has shipped in
-            # user32.dll since Windows 2000 -- used so the popup
-            # auto-dismisses instead of piling up unattended.
-            ctypes.windll.user32.MessageBoxTimeoutW(
-                0, text, "Ponto registrado", MB_ICONINFORMATION | MB_TOPMOST, 0, TIMEOUT_MS,
-            )
+            _show_fullscreen_notice(employee_name, direction)
         except Exception:
-            logger.exception("Falha ao mostrar o popup de confirmação.")
+            logger.exception("Falha ao mostrar o aviso de ponto registrado.")
 
-    threading.Thread(target=_show, daemon=True).start()
+
+def _notify_scan_success(employee_name: str, direction: str) -> None:
+    """
+    Give immediate on-screen + audible feedback for a successful scan.
+
+    `kiosk_agent_service.exe` (the Scheduled Task build) runs with no
+    console, so without this the person at the reader has no way to know
+    the touch actually registered. A single background worker thread owns
+    the notice queue and shows one fullscreen notice at a time (auto-
+    dismissing — see NOTICE_DISPLAY_MS) so a burst of taps queues up
+    instead of fighting over the screen; `on_template`/the listener loop
+    itself never blocks on this.
+    """
+    if sys.platform != "win32":
+        return
+
+    global _notify_worker_started
+    with _notify_worker_lock:
+        if not _notify_worker_started:
+            threading.Thread(target=_notify_worker, daemon=True, name="ScanNotify").start()
+            _notify_worker_started = True
+
+    _notify_queue.put((employee_name, direction))
 
 
 def cmd_listen(args: argparse.Namespace) -> None:

@@ -44,7 +44,9 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['django', 'PyQt5', 'PySide2', 'matplotlib', 'numpy', 'tkinter'],
+    # tkinter is NOT excluded: kiosk_agent.py uses it for the fullscreen
+    # "ponto registrado" notice (see _show_fullscreen_notice).
+    excludes=['django', 'PyQt5', 'PySide2', 'matplotlib', 'numpy'],
     noarchive=False,
     cipher=block_cipher,
 )
