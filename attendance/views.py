@@ -2,9 +2,11 @@ import calendar
 from datetime import date, datetime, timedelta
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpResponseNotAllowed
+from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views import View
 
 from employee_truck_control.http import infinite_scroll_json, is_ajax_request, parse_date_param
@@ -111,6 +113,7 @@ class PresenceHistoryView(LoginRequiredMixin, View):
 
     template_name = 'attendance/presence_history.html'
     PAGE_SIZE = 50
+    LIVE_POLL_LIMIT = 50
 
     def _page_size(self, request) -> int:
         """
@@ -127,6 +130,28 @@ class PresenceHistoryView(LoginRequiredMixin, View):
         except ValueError:
             return self.PAGE_SIZE
         return max(1, min(size, 100))
+
+    def _poll_response(self, request, events, since):
+        """
+        Live-update endpoint: given `since` (an ISO timestamp of the newest
+        event the client already has), return only strictly newer events as
+        rendered row HTML, so the client can prepend them without a reload.
+        """
+        since_dt = parse_datetime(since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            new_events = []
+        else:
+            new_events = [e for e in events if e['timestamp'] > since_dt][:self.LIVE_POLL_LIMIT]
+
+        compact = request.GET.get('compact') == '1'
+        row_template = 'employees/_presence_rows.html' if compact else 'attendance/_presence_rows.html'
+        html = render_to_string(row_template, {'events': new_events}, request=request)
+        newest = new_events[0]['timestamp'].isoformat() if new_events else since
+
+        return JsonResponse({'html': html, 'count': len(new_events), 'newest': newest})
 
     def get(self, request):
         from django.core.paginator import Paginator
@@ -205,6 +230,10 @@ class PresenceHistoryView(LoginRequiredMixin, View):
                     })
 
         events.sort(key=lambda e: e['timestamp'], reverse=True)
+
+        since = request.GET.get('since')
+        if is_ajax_request(request) and since:
+            return self._poll_response(request, events, since)
 
         employee = None
         if employee_pk:

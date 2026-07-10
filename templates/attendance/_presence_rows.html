@@ -1,5 +1,5 @@
 {% for event in events %}
-<tr>
+<tr data-timestamp="{{ event.timestamp|date:'c' }}">
   <td>
     {% if event.type == 'employee' %}
       <span class="badge badge--info">Funcionário</span>

@@ -67,7 +67,6 @@
         <h2 class="card-title">Histórico de Entradas</h2>
         <a href="{% url 'presence_history' %}?type=employees" class="btn btn--sm btn--outline">Ver tudo</a>
       </div>
-      {% if recent_presence_events %}
       <div class="table-responsive history-scroll-box" id="history-scroll-box">
         <table class="table">
           <thead>
@@ -84,6 +83,11 @@
         <div id="history-sentinel" class="infinite-sentinel"></div>
         <div id="history-loader" class="infinite-loader" style="display:none"><span class="infinite-spinner"></span> Carregando...</div>
       </div>
+      {% if not recent_presence_events %}
+      <div class="empty-state">
+        <p>Nenhum registro de entrada encontrado.</p>
+      </div>
+      {% endif %}
       <script>
       (function () {
         var scrollBox = document.getElementById('history-scroll-box');
@@ -125,11 +129,12 @@
         observer.observe(sentinel);
       })();
       </script>
-      {% else %}
-      <div class="empty-state">
-        <p>Nenhum registro de entrada encontrado.</p>
-      </div>
-      {% endif %}
+      <script>
+      window.startLivePoll({
+        tbodyId: 'history-tbody',
+        url: '{% url "presence_history" %}?type=employees&compact=1'
+      });
+      </script>
     </div>
   </div>
 </div>

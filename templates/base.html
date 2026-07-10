@@ -310,6 +310,42 @@
   })();
   </script>
 
+  {# Live polling: periodically checks a "since" endpoint and prepends any
+     new rows to a tbody, so a second user sees data another user just
+     inserted (e.g. a kiosk clock-in) without reloading the page. Opt in
+     per-page by calling window.startLivePoll({tbodyId, url}). #}
+  <script>
+  window.startLivePoll = function (opts) {
+    var tbody = document.getElementById(opts.tbodyId);
+    if (!tbody) return;
+
+    var intervalMs = opts.intervalMs || 5000;
+    var firstRow = tbody.querySelector('tr[data-timestamp]');
+    var since = firstRow ? firstRow.getAttribute('data-timestamp') : new Date().toISOString();
+    var polling = false;
+
+    function tick() {
+      if (polling || document.hidden) return;
+      polling = true;
+      var url = opts.url + (opts.url.indexOf('?') === -1 ? '?' : '&') + 'since=' + encodeURIComponent(since);
+      fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.count > 0) {
+            tbody.insertAdjacentHTML('afterbegin', data.html);
+            since = data.newest;
+          }
+          polling = false;
+        })
+        .catch(function () {
+          polling = false;
+        });
+    }
+
+    setInterval(tick, intervalMs);
+  };
+  </script>
+
   <script>
   document.addEventListener('click', function (e) {
     var menu = document.getElementById('systemMenu');

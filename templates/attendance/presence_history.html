@@ -42,7 +42,6 @@
   </div>
 </div>
 
-{% if events %}
 <div class="table-responsive">
   <table class="table">
     <thead>
@@ -55,9 +54,16 @@
       </tr>
     </thead>
     {% include 'partials/_infinite_scroll_body.html' with rows_template='attendance/_presence_rows.html' %}
-{% else %}
+{% if not events %}
 <div class="empty-state">
   <p>Nenhum registro encontrado.</p>
 </div>
 {% endif %}
+
+<script>
+window.startLivePoll({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "presence_history" %}?type={{ filter_type }}{% if selected_employee %}&employee={{ selected_employee.pk }}{% endif %}'
+});
+</script>
 {% endblock %}

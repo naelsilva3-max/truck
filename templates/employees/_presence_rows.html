@@ -1,5 +1,5 @@
 {% for event in events %}
-<tr>
+<tr data-timestamp="{{ event.timestamp|date:'c' }}">
   <td><a href="{% url 'employees:detail' event.employee.pk %}">{{ event.employee.name }}</a></td>
   <td>{{ event.timestamp|date:"d/m/Y H:i:s" }}</td>
   <td>
