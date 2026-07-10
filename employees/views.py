@@ -8,7 +8,9 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.cache import never_cache
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from accounts.logging import log_action
@@ -145,6 +147,7 @@ class EmployeeUpdateView(EditRequiredMixin, UpdateView):
         return reverse_lazy("employees:detail", kwargs={"pk": self.object.pk})
 
 
+@method_decorator(never_cache, name='dispatch')
 class EmployeeEnrollView(EditRequiredMixin, View):
     template_name = "employees/enroll.html"
     MAX_TEMPLATE_BYTES = 10_240
@@ -197,7 +200,12 @@ class EmployeeEnrollView(EditRequiredMixin, View):
             )
             if created:
                 log_action(request, SystemLog.ACTION_UPDATE, f'Solicitação de biometria remota criada para {employee.name}')
-            messages.info(request, "Nenhum leitor local encontrado. Aguardando o quiosque remoto...")
+            # No flash message here: the AJAX status polls return plain JSON
+            # (never rendering the messages block), so a flash added here
+            # would sit unread until some later full-page render — showing
+            # up "late", after the request has already moved on and looking
+            # like stale/confusing state. The waiting alert in the template
+            # (driven by `pending_request`) already communicates this.
             return self._render_with_biometric_status(request, employee)
 
         template_bytes: bytes | None = None
