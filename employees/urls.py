@@ -10,6 +10,7 @@ Routes
   /employees/<pk>/                → EmployeeDetailView  (employees:detail)
   /employees/<pk>/edit/           → EmployeeUpdateView  (employees:update)
   /employees/<pk>/enroll/         → EmployeeEnrollView  (employees:enroll)
+  /employees/<pk>/biometric/delete/ → EmployeeDeleteBiometricView (employees:biometric_delete)
   /employees/report/pdf/          → EmployeeReportPDFView (employees:report_pdf)
 """
 
@@ -37,4 +38,5 @@ urlpatterns = [
 
     # Biometric enrollment
     path("<int:pk>/enroll/", views.EmployeeEnrollView.as_view(), name="enroll"),
+    path("<int:pk>/biometric/delete/", views.EmployeeDeleteBiometricView.as_view(), name="biometric_delete"),
 ]

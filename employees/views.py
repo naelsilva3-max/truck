@@ -147,6 +147,29 @@ class EmployeeUpdateView(EditRequiredMixin, UpdateView):
         return reverse_lazy("employees:detail", kwargs={"pk": self.object.pk})
 
 
+class EmployeeDeleteBiometricView(EditRequiredMixin, View):
+    """
+    Deletes an employee's biometric template outright, so a fresh
+    "Cadastrar Biometria" reads as a first-time enroll rather than a
+    re-enroll — re-enroll (overwriting an existing template in place) was
+    observed to be less reliable end-to-end than a clean delete-then-enroll,
+    so this is now the recommended workflow from the edit page.
+    """
+
+    def post(self, request, pk: int):
+        employee = get_object_or_404(Employee, pk=pk)
+        deleted, _ = BiometricTemplate.objects.filter(employee=employee).delete()
+        BiometricEnrollRequest.objects.filter(
+            employee=employee, status=BiometricEnrollRequest.PENDING,
+        ).update(status=BiometricEnrollRequest.CANCELLED, completed_at=timezone.now())
+        if deleted:
+            log_action(request, SystemLog.ACTION_UPDATE, f'Biometria apagada para {employee.name}')
+            messages.success(request, f'Biometria de {employee.name} apagada. Cadastre uma nova quando quiser.')
+        else:
+            messages.info(request, f'{employee.name} não tinha biometria cadastrada.')
+        return redirect('employees:update', pk=employee.pk)
+
+
 @method_decorator(never_cache, name='dispatch')
 class EmployeeEnrollView(EditRequiredMixin, View):
     template_name = "employees/enroll.html"

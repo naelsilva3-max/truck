@@ -174,6 +174,16 @@
       <a href="{% url 'employees:list' %}" class="btn btn--secondary">Cancelar</a>
     </div>
   </form>
+
+  {% if form.instance.pk and form.instance.biometric %}
+    <form method="post" action="{% url 'employees:biometric_delete' form.instance.pk %}"
+          onsubmit="return confirm('Apagar a biometria de {{ form.instance.name|escapejs }}? Será necessário cadastrar uma nova depois.');">
+      {% csrf_token %}
+      <div class="form-actions">
+        <button type="submit" class="btn btn--danger">Apagar Biometria</button>
+      </div>
+    </form>
+  {% endif %}
 </div>
 
 <script src="{% static 'js/camera-capture.js' %}"></script>

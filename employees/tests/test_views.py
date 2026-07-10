@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from attendance.models import PresenceEvent
 from biometric.exceptions import BiometricDeviceNotFoundError
-from biometric.models import BiometricEnrollRequest
+from biometric.models import BiometricEnrollRequest, BiometricTemplate
 from employees.models import Employee
 
 
@@ -191,3 +191,53 @@ class TestEmployeeEnrollViewRemoteQueue:
         assert req.status == BiometricEnrollRequest.CANCELLED
         follow = client.get(reverse('employees:enroll', kwargs={'pk': emp.pk}))
         assert follow.context['pending_request'] is None
+
+
+@pytest.mark.django_db
+class TestEmployeeDeleteBiometricView:
+    def test_deletes_existing_template_and_redirects_to_edit(self):
+        user = make_admin_user()
+        emp = make_employee()
+        BiometricTemplate.objects.create(employee=emp, template=b'x' * 64)
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(reverse('employees:biometric_delete', kwargs={'pk': emp.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse('employees:update', kwargs={'pk': emp.pk})
+        assert not BiometricTemplate.objects.filter(employee=emp).exists()
+
+    def test_cancels_pending_remote_request_too(self):
+        user = make_admin_user()
+        emp = make_employee()
+        BiometricTemplate.objects.create(employee=emp, template=b'x' * 64)
+        req = BiometricEnrollRequest.objects.create(employee=emp)
+        client = Client()
+        client.force_login(user)
+
+        client.post(reverse('employees:biometric_delete', kwargs={'pk': emp.pk}))
+
+        req.refresh_from_db()
+        assert req.status == BiometricEnrollRequest.CANCELLED
+
+    def test_no_existing_template_is_a_no_op(self):
+        user = make_admin_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(reverse('employees:biometric_delete', kwargs={'pk': emp.pk}))
+
+        assert response.status_code == 302
+
+    def test_requires_admin_role(self):
+        user = make_user()  # no is_superuser → role 'simple', below EditRequiredMixin's allowed_roles
+        emp = make_employee()
+        BiometricTemplate.objects.create(employee=emp, template=b'x' * 64)
+        client = Client()
+        client.force_login(user)
+
+        client.post(reverse('employees:biometric_delete', kwargs={'pk': emp.pk}))
+
+        assert BiometricTemplate.objects.filter(employee=emp).exists()
