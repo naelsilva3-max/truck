@@ -264,6 +264,30 @@
   })();
   </script>
 
+  {% comment %}
+  Shared by infinite-scroll and startLivePoll below: shows/hides a small
+  inline error note after `anchor` when repeated fetch() calls fail, so
+  network trouble isn't silent forever.
+  {% endcomment %}
+  <script>
+  function _fetchErrorEl(anchor) {
+    var el = anchor.nextElementSibling;
+    if (el && el.classList.contains('fetch-error-note')) return el;
+    el = document.createElement('div');
+    el.className = 'alert alert--error fetch-error-note';
+    el.style.marginTop = '0.5rem';
+    anchor.insertAdjacentElement('afterend', el);
+    return el;
+  }
+  function showFetchError(anchor, message) {
+    _fetchErrorEl(anchor).textContent = message;
+  }
+  function hideFetchError(anchor) {
+    var el = anchor.nextElementSibling;
+    if (el && el.classList.contains('fetch-error-note')) el.remove();
+  }
+  </script>
+
   <script>
   (function () {
     var tbody = document.getElementById('infinite-tbody');
@@ -273,6 +297,7 @@
 
     var nextPage = window._infiniteNextPage || null;
     var loading = false;
+    var consecutiveFailures = 0;
 
     function currentParams() {
       var params = new URLSearchParams(window.location.search);
@@ -295,10 +320,16 @@
           nextPage = data.has_next ? nextPage + 1 : null;
           loading = false;
           loader.style.display = 'none';
+          consecutiveFailures = 0;
+          hideFetchError(sentinel);
         })
         .catch(function () {
           loading = false;
           loader.style.display = 'none';
+          consecutiveFailures++;
+          if (consecutiveFailures >= 2) {
+            showFetchError(sentinel, 'Não foi possível carregar mais itens. Verifique sua conexão.');
+          }
         });
     }
 
@@ -321,10 +352,12 @@
     var tbody = document.getElementById(opts.tbodyId);
     if (!tbody) return;
 
+    var errorAnchor = tbody.closest('table') || tbody;
     var intervalMs = opts.intervalMs || 5000;
     var firstRow = tbody.querySelector('tr[data-timestamp]');
     var since = firstRow ? firstRow.getAttribute('data-timestamp') : new Date().toISOString();
     var polling = false;
+    var consecutiveFailures = 0;
 
     function tick() {
       if (polling || document.hidden) return;
@@ -338,9 +371,15 @@
             since = data.newest;
           }
           polling = false;
+          consecutiveFailures = 0;
+          hideFetchError(errorAnchor);
         })
         .catch(function () {
           polling = false;
+          consecutiveFailures++;
+          if (consecutiveFailures >= 2) {
+            showFetchError(errorAnchor, 'Atualização automática indisponível no momento (verifique sua conexão).');
+          }
         });
     }
 
