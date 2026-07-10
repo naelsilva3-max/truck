@@ -2,6 +2,7 @@ import calendar
 from datetime import date, datetime, timedelta
 
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db.models import Q
 from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
@@ -108,6 +109,52 @@ class AttendanceCalendarView(LoginRequiredMixin, View):
         except (TypeError, ValueError):
             return default
 
+    def _update_response(self, employee, first_of_month, last_of_month, request, changed_since):
+        """
+        Live-update endpoint for the calendar grid: given the employee and
+        visible month already on screen, returns just the day cells whose
+        AttendanceRecord set changed (new check-in OR a checkout closing an
+        already-visible open record) after `changed_since`, so the client
+        can patch only those cells in place. The grid has no single
+        table/tbody to hook the shared startLivePoll/startLiveUpdate onto
+        (it's a month of day divs, not rows), hence this bespoke endpoint
+        + window.startCalendarLiveUpdate in base.html.
+        """
+        since_dt = parse_datetime(changed_since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        days_html = {}
+        newest = changed_since
+        if since_dt is not None:
+            changed_records = list(
+                AttendanceRecord.objects.filter(
+                    employee=employee, date__gte=first_of_month, date__lte=last_of_month,
+                ).filter(Q(created_at__gt=since_dt) | Q(updated_at__gt=since_dt)).order_by('entry_time')
+            )
+            if changed_records:
+                changed_days: dict[date, list[AttendanceRecord]] = {}
+                for record in changed_records:
+                    changed_days.setdefault(record.date, []).append(record)
+
+                for day, day_records in changed_days.items():
+                    # Re-render the FULL day (not just the changed record),
+                    # since the client replaces the whole cell's contents —
+                    # a day can have more than one record (e.g. two shifts).
+                    all_records_that_day = AttendanceRecord.objects.filter(
+                        employee=employee, date=day,
+                    ).order_by('entry_time')
+                    days_html[day.isoformat()] = render_to_string(
+                        'attendance/_calendar_day_records.html', {'records': all_records_that_day}, request=request
+                    )
+
+                latest_ts = max(
+                    max(r.created_at, r.updated_at) for r in changed_records
+                )
+                newest = latest_ts.isoformat()
+
+        return JsonResponse({'days': days_html, 'newest': newest})
+
     def get(self, request):
         employee_pk = request.GET.get('employee')
         employee = get_object_or_404(Employee, pk=employee_pk) if employee_pk else None
@@ -120,6 +167,10 @@ class AttendanceCalendarView(LoginRequiredMixin, View):
         first_of_month = date(year, month, 1)
         last_day_num = calendar.monthrange(year, month)[1]
         last_of_month = date(year, month, last_day_num)
+
+        changed_since = request.GET.get('changed_since')
+        if employee and changed_since and is_ajax_request(request):
+            return self._update_response(employee, first_of_month, last_of_month, request, changed_since)
 
         records_by_day: dict[date, list[AttendanceRecord]] = {}
         if employee:

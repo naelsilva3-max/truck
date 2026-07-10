@@ -206,3 +206,103 @@ class TestAttendanceListLivePolling:
         assert response.status_code == 200
         assert b'startLivePoll' in response.content
         assert b'startLiveUpdate' in response.content
+
+
+@pytest.mark.django_db
+class TestAttendanceCalendarLiveUpdate:
+    def test_new_checkin_this_month_is_picked_up(self):
+        from attendance.service import AttendanceService
+
+        user = make_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        today = timezone.localdate()
+        since = timezone.now().isoformat()
+        AttendanceService().record_entry(emp.pk)
+
+        response = client.get(
+            reverse('attendance_calendar'),
+            {'employee': emp.pk, 'year': today.year, 'month': today.month, 'changed_since': since},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert today.isoformat() in body['days']
+        assert 'em aberto' in body['days'][today.isoformat()]
+
+    def test_checkout_closing_an_open_record_is_picked_up(self):
+        import time
+
+        from attendance.service import AttendanceService
+
+        user = make_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        today = timezone.localdate()
+        svc = AttendanceService()
+        svc.record_entry(emp.pk)
+
+        changed_since = timezone.now().isoformat()
+        time.sleep(1.1)
+        svc.record_exit(emp.pk)
+
+        response = client.get(
+            reverse('attendance_calendar'),
+            {'employee': emp.pk, 'year': today.year, 'month': today.month, 'changed_since': changed_since},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert today.isoformat() in body['days']
+        assert 'em aberto' not in body['days'][today.isoformat()]
+
+    def test_other_employee_changes_are_not_picked_up(self):
+        from attendance.service import AttendanceService
+
+        user = make_user()
+        emp = make_employee(name='Watched')
+        other = make_employee(name='Not Watched')
+        client = Client()
+        client.force_login(user)
+
+        today = timezone.localdate()
+        since = timezone.now().isoformat()
+        AttendanceService().record_entry(other.pk)
+
+        response = client.get(
+            reverse('attendance_calendar'),
+            {'employee': emp.pk, 'year': today.year, 'month': today.month, 'changed_since': since},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['days'] == {}
+
+    def test_page_renders_with_calendar_live_update_script(self):
+        user = make_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('attendance_calendar'), {'employee': emp.pk})
+
+        assert response.status_code == 200
+        assert b'startCalendarLiveUpdate' in response.content
+        assert b'data-day=' in response.content
+
+    def test_no_employee_selected_does_not_error(self):
+        user = make_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('attendance_calendar'))
+
+        assert response.status_code == 200
+        # The shared function definition is always present (base.html);
+        # only the per-page CALL is conditional on an employee being picked.
+        assert b'startCalendarLiveUpdate({' not in response.content

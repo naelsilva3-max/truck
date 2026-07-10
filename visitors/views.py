@@ -146,16 +146,88 @@ class VisitListView(LoginRequiredMixin, View):
     """List all visits, with active (on-site) and completed (departed) separated."""
     template_name = 'visitors/visit_list.html'
     PAGE_SIZE = 30
+    LIVE_POLL_LIMIT = 50
 
     SEARCH_FIELDS = [
         'visitor__name', 'visitor__company', 'visitor__phone', 'visitor__rg', 'visitor__cpf',
         'responsible__name', 'notes',
     ]
 
+    def _search_filtered(self, qs, query):
+        if query:
+            search_filter = Q()
+            for field in self.SEARCH_FIELDS:
+                search_filter |= Q(**{f'{field}__icontains': query})
+            qs = qs.filter(search_filter)
+        return qs
+
+    def _poll_response(self, request, filter_type, query, since):
+        """New visits (arrivals) registered after `since`, respecting the
+        current tab/search filter."""
+        since_dt = parse_datetime(since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            new_visits = []
+        else:
+            qs = Visit.objects.select_related('visitor', 'responsible').filter(created_at__gt=since_dt)
+            if filter_type == 'active':
+                qs = qs.filter(actual_departure_time__isnull=True)
+            elif filter_type == 'completed':
+                qs = qs.filter(actual_departure_time__isnull=False)
+            new_visits = list(self._search_filtered(qs, query).order_by('-created_at')[:self.LIVE_POLL_LIMIT])
+
+        html = render_to_string('visitors/_visit_rows.html', {'visits': new_visits}, request=request)
+        newest = new_visits[0].created_at.isoformat() if new_visits else since
+
+        return JsonResponse({'html': html, 'count': len(new_visits), 'newest': newest})
+
+    def _update_response(self, request, filter_type, query, changed_since):
+        """
+        Visits whose departure was just registered. Deliberately checks
+        ALL visits matching the search query, ignoring the active/completed
+        tab filter -- when a visit's departure is marked, it must move OUT
+        of "active" and (if that tab is being watched) INTO "completed",
+        not just vanish or sit there with a stale badge.
+        """
+        since_dt = parse_datetime(changed_since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            return JsonResponse({'html': '', 'count': 0, 'newest': changed_since, 'removed_ids': []})
+
+        qs = Visit.objects.select_related('visitor', 'responsible').filter(updated_at__gt=since_dt)
+        candidates = list(self._search_filtered(qs, query).order_by('-updated_at')[:self.LIVE_POLL_LIMIT])
+
+        if filter_type == 'active':
+            visible = [v for v in candidates if v.is_active]
+            removed_ids = [v.pk for v in candidates if not v.is_active]
+        elif filter_type == 'completed':
+            visible = [v for v in candidates if not v.is_active]
+            removed_ids = [v.pk for v in candidates if v.is_active]
+        else:
+            visible = candidates
+            removed_ids = []
+
+        html = render_to_string('visitors/_visit_rows.html', {'visits': visible}, request=request)
+        newest = candidates[0].updated_at.isoformat() if candidates else changed_since
+
+        return JsonResponse({'html': html, 'count': len(visible), 'newest': newest, 'removed_ids': removed_ids})
+
     def get(self, request):
         from django.core.paginator import Paginator
         filter_type = request.GET.get('filter', 'active')
         query = request.GET.get('q', '').strip()
+
+        if is_ajax_request(request):
+            since = request.GET.get('since')
+            if since:
+                return self._poll_response(request, filter_type, query, since)
+            changed_since = request.GET.get('changed_since')
+            if changed_since:
+                return self._update_response(request, filter_type, query, changed_since)
 
         base_qs = Visit.objects.select_related('visitor', 'responsible').order_by('-visit_date', '-arrival_time')
         active_count = base_qs.filter(actual_departure_time__isnull=True).count()
@@ -168,11 +240,7 @@ class VisitListView(LoginRequiredMixin, View):
         else:
             filtered = base_qs
 
-        if query:
-            search_filter = Q()
-            for field in self.SEARCH_FIELDS:
-                search_filter |= Q(**{f'{field}__icontains': query})
-            filtered = filtered.filter(search_filter)
+        filtered = self._search_filtered(filtered, query)
 
         paginator = Paginator(filtered, self.PAGE_SIZE)
         page_obj = paginator.get_page(request.GET.get('page', 1))
@@ -243,8 +311,10 @@ class VisitDepartView(LoginRequiredMixin, View):
             return redirect('visitors:visit_detail', pk=pk)
 
         now = timezone.localtime(timezone.now())
-        # Use update() to bypass model validation (actual departure can be on a different day)
-        Visit.objects.filter(pk=visit.pk).update(actual_departure_time=now.time())
+        # Use update() to bypass model validation (actual departure can be on a different day).
+        # updated_at must be set explicitly here -- update() bypasses auto_now,
+        # and that field is what the live-update poll watches for changes.
+        Visit.objects.filter(pk=visit.pk).update(actual_departure_time=now.time(), updated_at=timezone.now())
         messages.success(
             request,
             f'Saída de "{visit.visitor.name}" registrada às {now:%H:%M}.',

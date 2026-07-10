@@ -171,6 +171,53 @@
       if (!document.hidden) tick();
     });
   };
+
+  // Bespoke live-update for the presence calendar grid: it's a month of
+  // .calendar-day divs (data-day="YYYY-MM-DD"), not a <table>/<tbody>, so
+  // it can't reuse startLivePoll/startLiveUpdate's row-based DOM matching.
+  // Patches just the day cells whose record set changed (new check-in or
+  // a checkout closing an already-visible open record).
+  window.startCalendarLiveUpdate = function (opts) {
+    var grid = document.querySelector('.calendar-grid');
+    if (!grid) return;
+
+    var intervalMs = opts.intervalMs || 5000;
+    var since = new Date().toISOString();
+    var polling = false;
+    var consecutiveFailures = 0;
+
+    function tick() {
+      if (polling || document.hidden) return;
+      polling = true;
+      var url = opts.url + (opts.url.indexOf('?') === -1 ? '?' : '&') + 'changed_since=' + encodeURIComponent(since);
+      fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          Object.keys(data.days || {}).forEach(function (day) {
+            var cell = grid.querySelector('.calendar-day[data-day="' + day + '"]');
+            if (!cell) return;
+            var recordsContainer = cell.querySelector('.calendar-day-records');
+            if (recordsContainer) recordsContainer.innerHTML = data.days[day];
+          });
+          if (data.newest) since = data.newest;
+          polling = false;
+          consecutiveFailures = 0;
+          if (window.hideFetchError) window.hideFetchError(grid);
+        })
+        .catch(function () {
+          polling = false;
+          consecutiveFailures++;
+          if (consecutiveFailures >= 2 && window.showFetchError) {
+            window.showFetchError(grid, 'Atualização automática indisponível no momento (verifique sua conexão).');
+          }
+        });
+    }
+
+    setInterval(tick, intervalMs);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) tick();
+    });
+  };
   </script>
 
   <nav class="navbar">

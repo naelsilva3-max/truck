@@ -39,6 +39,7 @@ class TestLiveScriptOrder:
         ('accounts:manage_users', {}),
         ('visitors:list', {}),
         ('trucks:list', {}),
+        ('visitors:visit_list', {}),
     ]
 
     # (url_name, kwargs) for pages using startLiveUpdate (existing-row replace)
@@ -46,6 +47,7 @@ class TestLiveScriptOrder:
         ('employees:list', {}),
         ('accounts:manage_users', {}),
         ('trucks:list', {}),
+        ('visitors:visit_list', {}),
     ]
 
     def _get_page(self, client, url_name, kwargs):
@@ -103,3 +105,22 @@ class TestLiveScriptOrder:
         content = response.content.decode()
         self._assert_definition_precedes_calls(content, 'startLivePoll', 'attendance:list')
         self._assert_definition_precedes_calls(content, 'startLiveUpdate', 'attendance:list')
+
+    def test_attendance_calendar_page(self):
+        user = make_master_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('attendance_calendar'), {'employee': emp.pk})
+        assert response.status_code == 200
+        content = response.content.decode()
+
+        definition_index = content.find('window.startCalendarLiveUpdate = function')
+        assert definition_index != -1
+        call_index = content.find('startCalendarLiveUpdate({')
+        assert call_index != -1
+        assert definition_index < call_index, (
+            'startCalendarLiveUpdate is called before it is defined -- would '
+            'fail silently in a real browser.'
+        )

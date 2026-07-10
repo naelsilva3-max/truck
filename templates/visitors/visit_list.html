@@ -29,7 +29,6 @@
   {% endif %}
 </form>
 
-{% if visits %}
 <div class="table-responsive">
   <table class="table">
     <thead>
@@ -45,10 +44,21 @@
       </tr>
     </thead>
     {% include 'partials/_infinite_scroll_body.html' with rows_template='visitors/_visit_rows.html' %}
-{% else %}
+{% if not visits %}
 <div class="empty-state">
   <p>Nenhuma visita registrada.</p>
   <a href="{% url 'visitors:visit_create' %}" class="btn btn--primary">Registrar primeira visita</a>
 </div>
 {% endif %}
+
+<script>
+window.startLivePoll({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "visitors:visit_list" %}?filter={{ filter_type }}{% if query %}&q={{ query|urlencode }}{% endif %}'
+});
+window.startLiveUpdate({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "visitors:visit_list" %}?filter={{ filter_type }}{% if query %}&q={{ query|urlencode }}{% endif %}'
+});
+</script>
 {% endblock %}

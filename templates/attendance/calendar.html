@@ -41,18 +41,22 @@
   {% for week in weeks %}
   <div class="calendar-grid-row">
     {% for day in week %}
-    <div class="calendar-day {% if not day.in_month %}calendar-day--muted{% endif %} {% if day.is_today %}calendar-day--today{% endif %}">
+    <div class="calendar-day {% if not day.in_month %}calendar-day--muted{% endif %} {% if day.is_today %}calendar-day--today{% endif %}" data-day="{{ day.date|date:'Y-m-d' }}">
       <span class="calendar-day-number">{{ day.date|date:"j" }}</span>
-      {% for record in day.records %}
-        <div class="calendar-record {% if not record.exit_time %}calendar-record--open{% endif %}">
-          {{ record.entry_time|date:"H:i" }}{% if record.exit_time %} → {{ record.exit_time|date:"H:i" }}{% else %} → em aberto{% endif %}
-        </div>
-      {% endfor %}
+      <div class="calendar-day-records">
+        {% include 'attendance/_calendar_day_records.html' with records=day.records %}
+      </div>
     </div>
     {% endfor %}
   </div>
   {% endfor %}
 </div>
+
+<script>
+window.startCalendarLiveUpdate({
+  url: '{% url "attendance_calendar" %}?employee={{ selected_employee.pk }}&year={{ month_date|date:"Y" }}&month={{ month_date|date:"n" }}'
+});
+</script>
 {% else %}
 <div class="empty-state">
   <p>Selecione um funcionário para ver o calendário de entradas e saídas.</p>

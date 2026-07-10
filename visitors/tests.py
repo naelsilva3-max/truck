@@ -10,7 +10,7 @@ from django.utils import timezone
 from PIL import Image
 
 from visitors.forms import VisitorForm
-from visitors.models import Visitor
+from visitors.models import Visit, Visitor
 
 
 def _make_valid_jpeg_bytes() -> bytes:
@@ -145,3 +145,138 @@ class TestVisitorListLivePoll:
         assert response.status_code == 200
         assert b'infinite-tbody' in response.content
         assert b'startLivePoll' in response.content
+
+
+def make_responsible_employee(**kw):
+    from datetime import date
+
+    from employees.models import Employee
+    defaults = dict(name='Responsible Person', role='Recepção', hire_date=date(2020, 1, 1))
+    defaults.update(kw)
+    return Employee.objects.create(**defaults)
+
+
+def make_visit(**kw):
+    from datetime import time
+
+    defaults = dict(
+        visitor=make_visitor(name=f'Visitor {Visitor.objects.count() + 1}'),
+        visit_date=timezone.localdate(),
+        arrival_time=time(9, 0),
+        scheduled_departure_time=time(17, 0),
+        responsible=make_responsible_employee(),
+    )
+    defaults.update(kw)
+    return Visit.objects.create(**defaults)
+
+
+@pytest.mark.django_db
+class TestVisitListLivePoll:
+    def test_since_returns_only_newer_visits_in_active_tab(self):
+        user = make_user()
+        now = timezone.now()
+        older = make_visit()
+        Visit.objects.filter(pk=older.pk).update(created_at=now - timedelta(minutes=10))
+        newer = make_visit()
+        Visit.objects.filter(pk=newer.pk).update(created_at=now)
+
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('visitors:visit_list'),
+            {'filter': 'active', 'since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['count'] == 1
+        assert newer.visitor.name in body['html']
+        assert older.visitor.name not in body['html']
+
+    def test_requires_login(self):
+        client = Client()
+        response = client.get(reverse('visitors:visit_list'), {'since': timezone.now().isoformat()})
+        assert response.status_code == 302
+
+    def test_renders_with_zero_visits(self):
+        user = make_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('visitors:visit_list'))
+
+        assert response.status_code == 200
+        assert b'infinite-tbody' in response.content
+        assert b'startLivePoll' in response.content
+        assert b'startLiveUpdate' in response.content
+
+
+@pytest.mark.django_db
+class TestVisitListLiveUpdate:
+    def test_departure_removes_visit_from_active_tab(self):
+        user = make_user()
+        visit = make_visit()
+        now = timezone.now()
+        Visit.objects.filter(pk=visit.pk).update(updated_at=now - timedelta(minutes=10))
+
+        client = Client()
+        client.force_login(user)
+
+        depart_resp = client.post(reverse('visitors:visit_depart', kwargs={'pk': visit.pk}))
+        assert depart_resp.status_code == 302
+
+        response = client.get(
+            reverse('visitors:visit_list'),
+            {'filter': 'active', 'changed_since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['count'] == 0
+        assert body['removed_ids'] == [visit.pk]
+
+    def test_departure_adds_visit_to_completed_tab(self):
+        user = make_user()
+        visit = make_visit()
+        now = timezone.now()
+        Visit.objects.filter(pk=visit.pk).update(updated_at=now - timedelta(minutes=10))
+
+        client = Client()
+        client.force_login(user)
+
+        client.post(reverse('visitors:visit_depart', kwargs={'pk': visit.pk}))
+
+        response = client.get(
+            reverse('visitors:visit_list'),
+            {'filter': 'completed', 'changed_since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['count'] == 1
+        assert body['removed_ids'] == []
+        assert visit.visitor.name in body['html']
+
+    def test_departure_visible_in_all_tab(self):
+        user = make_user()
+        visit = make_visit()
+        now = timezone.now()
+        Visit.objects.filter(pk=visit.pk).update(updated_at=now - timedelta(minutes=10))
+
+        client = Client()
+        client.force_login(user)
+
+        client.post(reverse('visitors:visit_depart', kwargs={'pk': visit.pk}))
+
+        response = client.get(
+            reverse('visitors:visit_list'),
+            {'filter': 'all', 'changed_since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['count'] == 1
+        assert body['removed_ids'] == []

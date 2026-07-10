@@ -1,0 +1,5 @@
+{% for record in records %}
+<div class="calendar-record {% if not record.exit_time %}calendar-record--open{% endif %}">
+  {{ record.entry_time|date:"H:i" }}{% if record.exit_time %} → {{ record.exit_time|date:"H:i" }}{% else %} → em aberto{% endif %}
+</div>
+{% endfor %}

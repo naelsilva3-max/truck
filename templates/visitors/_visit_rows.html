@@ -1,5 +1,5 @@
 {% for visit in visits %}
-<tr{% if visit.is_active %} class="row-active"{% else %} class="row-completed"{% endif %}>
+<tr data-row-id="{{ visit.pk }}" data-timestamp="{{ visit.created_at|date:'c' }}" data-updated-timestamp="{{ visit.updated_at|date:'c' }}"{% if visit.is_active %} class="row-active"{% else %} class="row-completed"{% endif %}>
   <td>
     <a href="{% url 'visitors:visit_detail' visit.pk %}">{{ visit.visitor.name }}</a>
     {% if visit.visitor.company %}
