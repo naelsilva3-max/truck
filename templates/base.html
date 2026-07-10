@@ -44,6 +44,13 @@
           if (data.count > 0) {
             tbody.insertAdjacentHTML('afterbegin', data.html);
             since = data.newest;
+            // Some tables render an in-tbody "no records yet" placeholder
+            // row instead of a separate empty-state div. It has no
+            // data-timestamp, so once real rows show up, drop it --
+            // otherwise it'd linger above/below the new data.
+            Array.prototype.forEach.call(tbody.querySelectorAll('tr:not([data-timestamp])'), function (row) {
+              row.remove();
+            });
           }
           polling = false;
           consecutiveFailures = 0;

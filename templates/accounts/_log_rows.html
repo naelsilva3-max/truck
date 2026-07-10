@@ -1,5 +1,5 @@
 {% for log in logs %}
-<tr>
+<tr data-timestamp="{{ log.timestamp|date:'c' }}">
   <td class="text-nowrap">{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
   <td>{{ log.username }}</td>
   <td>

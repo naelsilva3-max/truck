@@ -5,7 +5,9 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views import View
 
 from employee_truck_control.http import infinite_scroll_json, is_ajax_request, parse_date_param
@@ -18,9 +20,32 @@ class VisitorListView(LoginRequiredMixin, View):
     """List all visitors."""
     template_name = 'visitors/list.html'
     PAGE_SIZE = 20
+    LIVE_POLL_LIMIT = 50
+
+    def _poll_response(self, request, since):
+        since_dt = parse_datetime(since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            new_visitors = []
+        else:
+            new_visitors = list(
+                Visitor.objects.filter(created_at__gt=since_dt).order_by('-created_at')[:self.LIVE_POLL_LIMIT]
+            )
+
+        html = render_to_string('visitors/_visitor_rows.html', {'visitors': new_visitors}, request=request)
+        newest = new_visitors[0].created_at.isoformat() if new_visitors else since
+
+        return JsonResponse({'html': html, 'count': len(new_visitors), 'newest': newest})
 
     def get(self, request):
         from django.core.paginator import Paginator
+
+        since = request.GET.get('since')
+        if is_ajax_request(request) and since:
+            return self._poll_response(request, since)
+
         paginator = Paginator(Visitor.objects.all().order_by('name'), self.PAGE_SIZE)
         page_obj = paginator.get_page(request.GET.get('page', 1))
         if is_ajax_request(request):

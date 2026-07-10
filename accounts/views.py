@@ -8,7 +8,11 @@ from django.contrib.auth.models import User
 from django.contrib.auth.views import LoginView
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 
@@ -144,8 +148,39 @@ class UserCreateView(MasterRequiredMixin, View):
 
 class UserManageView(MasterRequiredMixin, View):
     template_name = 'accounts/user_manage.html'
+    LIVE_POLL_LIMIT = 50
+
+    def _poll_response(self, request, since):
+        """Live-update endpoint: new users created after `since`. Does NOT
+        catch existing users' active/role changes (a different mechanism,
+        not built yet) — only brand-new rows."""
+        since_dt = parse_datetime(since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            new_users = []
+        else:
+            new_users = list(
+                User.objects.select_related('profile')
+                .filter(date_joined__gt=since_dt)
+                .order_by('-date_joined')[:self.LIVE_POLL_LIMIT]
+            )
+
+        html = render_to_string(
+            'accounts/_user_rows.html',
+            {'users': new_users, 'role_choices': UserProfile.ROLE_CHOICES},
+            request=request,
+        )
+        newest = new_users[0].date_joined.isoformat() if new_users else since
+
+        return JsonResponse({'html': html, 'count': len(new_users), 'newest': newest})
 
     def get(self, request):
+        since = request.GET.get('since')
+        if is_ajax_request(request) and since:
+            return self._poll_response(request, since)
+
         users = User.objects.select_related('profile').order_by('username')
         return render(request, self.template_name, {'users': users, 'role_choices': UserProfile.ROLE_CHOICES})
 
@@ -217,9 +252,9 @@ class ResendVerificationView(MasterRequiredMixin, View):
 class SystemLogView(MasterRequiredMixin, View):
     template_name = 'accounts/system_log.html'
     PAGE_SIZE = 50
+    LIVE_POLL_LIMIT = 50
 
-    def get(self, request):
-        from django.core.paginator import Paginator
+    def _filtered_queryset(self, request):
         qs = SystemLog.objects.select_related('user').exclude(action=SystemLog.ACTION_PAGE_VIEW)
 
         action = request.GET.get('action')
@@ -235,7 +270,36 @@ class SystemLogView(MasterRequiredMixin, View):
             qs = qs.filter(timestamp__date__gte=start_date)
         if end_date:
             qs = qs.filter(timestamp__date__lte=end_date)
+        return qs
 
+    def _poll_response(self, request, since):
+        """Live-update endpoint: logs created after `since` (ISO timestamp),
+        respecting the current filters — SystemLog is append-only/immutable,
+        so this only ever needs to look for new rows, never changed ones."""
+        since_dt = parse_datetime(since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            new_logs = []
+        else:
+            new_logs = list(
+                self._filtered_queryset(request).filter(timestamp__gt=since_dt).order_by('-timestamp')[:self.LIVE_POLL_LIMIT]
+            )
+
+        html = render_to_string('accounts/_log_rows.html', {'logs': new_logs}, request=request)
+        newest = new_logs[0].timestamp.isoformat() if new_logs else since
+
+        return JsonResponse({'html': html, 'count': len(new_logs), 'newest': newest})
+
+    def get(self, request):
+        from django.core.paginator import Paginator
+
+        since = request.GET.get('since')
+        if is_ajax_request(request) and since:
+            return self._poll_response(request, since)
+
+        qs = self._filtered_queryset(request)
         paginator = Paginator(qs, self.PAGE_SIZE)
         page_obj = paginator.get_page(request.GET.get('page', 1))
 

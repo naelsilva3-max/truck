@@ -1,6 +1,6 @@
 {% load static %}
 {% for visitor in visitors %}
-<tr>
+<tr data-timestamp="{{ visitor.created_at|date:'c' }}">
   <td class="photo-cell">
     <img src="{% if visitor.photo %}{{ visitor.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ visitor.name }}" class="photo-thumb photo-thumb--list">
   </td>

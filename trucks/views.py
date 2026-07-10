@@ -9,7 +9,9 @@ from django.db.models import CharField, Prefetch, Q
 from django.db.models.functions import Cast
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views import View
 
 from accounts.mixins import EditRequiredMixin
@@ -126,17 +128,15 @@ class TruckBrandModelManageView(EditRequiredMixin, View):
 
 class TruckListView(LoginRequiredMixin, View):
     PAGE_SIZE = 20
+    LIVE_POLL_LIMIT = 50
 
     SEARCH_FIELDS = [
         'license_plate', 'model', 'chassis', 'color',
         'truck_model__name', 'truck_model__brand__name',
     ]
 
-    def get(self, request):
-        from django.core.paginator import Paginator
-        query = request.GET.get('q', '').strip()
-
-        trucks_qs = Truck.objects.prefetch_related(
+    def _base_queryset(self):
+        return Truck.objects.prefetch_related(
             Prefetch('photos', queryset=TruckPhoto.objects.order_by('order')),
             Prefetch(
                 'assignments',
@@ -144,6 +144,38 @@ class TruckListView(LoginRequiredMixin, View):
                 to_attr='current_assignments',
             ),
         )
+
+    def _poll_response(self, request, since):
+        since_dt = parse_datetime(since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            new_trucks = []
+        else:
+            new_trucks = list(
+                self._base_queryset().filter(created_at__gt=since_dt).order_by('-created_at')[:self.LIVE_POLL_LIMIT]
+            )
+
+        trucks_with_driver = []
+        for truck in new_trucks:
+            truck.cover_photo_url = get_cover_photo_url(truck)
+            trucks_with_driver.append((truck, get_current_driver_prefetched(truck)))
+
+        html = render_to_string('trucks/_rows.html', {'trucks_with_driver': trucks_with_driver}, request=request)
+        newest = new_trucks[0].created_at.isoformat() if new_trucks else since
+
+        return JsonResponse({'html': html, 'count': len(new_trucks), 'newest': newest})
+
+    def get(self, request):
+        from django.core.paginator import Paginator
+        query = request.GET.get('q', '').strip()
+
+        since = request.GET.get('since')
+        if is_ajax_request(request) and since:
+            return self._poll_response(request, since)
+
+        trucks_qs = self._base_queryset()
         if query:
             # year is numeric — cast to text so it can be matched with icontains
             # portably (Postgres rejects ILIKE directly against an integer column).

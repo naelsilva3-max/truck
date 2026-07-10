@@ -50,4 +50,11 @@
       </tr>
     </thead>
     {% include 'partials/_infinite_scroll_body.html' with rows_template='accounts/_log_rows.html' %}
+
+<script>
+window.startLivePoll({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "accounts:system_logs" %}?{% if request.GET.action %}action={{ request.GET.action }}&{% endif %}{% if request.GET.user %}user={{ request.GET.user|urlencode }}&{% endif %}{% if request.GET.start_date %}start_date={{ request.GET.start_date }}&{% endif %}{% if request.GET.end_date %}end_date={{ request.GET.end_date }}{% endif %}'
+});
+</script>
 {% endblock %}

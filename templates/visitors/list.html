@@ -13,7 +13,6 @@
   </div>
 </div>
 
-{% if visitors %}
 <div class="table-responsive">
   <table class="table">
     <thead>
@@ -28,10 +27,17 @@
       </tr>
     </thead>
     {% include 'partials/_infinite_scroll_body.html' with rows_template='visitors/_visitor_rows.html' %}
-{% else %}
+{% if not visitors %}
 <div class="empty-state">
   <p>Nenhum visitante cadastrado ainda.</p>
   <a href="{% url 'visitors:create' %}" class="btn btn--primary">Cadastrar primeiro visitante</a>
 </div>
 {% endif %}
+
+<script>
+window.startLivePoll({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "visitors:list" %}'
+});
+</script>
 {% endblock %}
