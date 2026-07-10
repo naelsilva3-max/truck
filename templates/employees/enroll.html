@@ -50,14 +50,45 @@
     {% endif %}
   </div>
 
-  <form method="post" class="enroll-form">
-    {% csrf_token %}
-    <div class="form-actions">
-      <button type="submit" class="btn btn--primary">
-        Iniciar Captura de Biometria
-      </button>
-      <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--secondary">Cancelar</a>
+  {% if pending_request %}
+    <div class="alert alert--info" id="enroll-waiting" data-poll-url="{% url 'employees:enroll' employee.pk %}">
+      <strong>Aguardando leitor do quiosque remoto...</strong>
+      <p>Peça para {{ employee.name }} posicionar o dedo no leitor do quiosque. Solicitado às {{ pending_request.requested_at|date:"H:i" }}.</p>
     </div>
-  </form>
+    <form method="post" class="enroll-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="cancel">
+      <div class="form-actions">
+        <button type="submit" class="btn btn--secondary">Cancelar solicitação</button>
+      </div>
+    </form>
+    <script>
+      (function () {
+        var el = document.getElementById('enroll-waiting');
+        var url = el.getAttribute('data-poll-url');
+        var timer = setInterval(function () {
+          fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              if (!data.waiting) {
+                clearInterval(timer);
+                window.location.reload();
+              }
+            })
+            .catch(function () { /* falha de rede: tenta de novo no próximo ciclo */ });
+        }, 3000);
+      })();
+    </script>
+  {% else %}
+    <form method="post" class="enroll-form">
+      {% csrf_token %}
+      <div class="form-actions">
+        <button type="submit" class="btn btn--primary">
+          Iniciar Captura de Biometria
+        </button>
+        <a href="{% url 'employees:detail' employee.pk %}" class="btn btn--secondary">Cancelar</a>
+      </div>
+    </form>
+  {% endif %}
 </div>
 {% endblock %}

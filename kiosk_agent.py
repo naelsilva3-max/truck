@@ -20,6 +20,7 @@ Config (.env file next to this script):
     KIOSK_DEVICE_TOKEN=<raw token from `manage.py kiosk_device create`>
     KIOSK_DEVICE_ID=0
     KIOSK_TEMPLATE_REFRESH_SECONDS=300
+    KIOSK_ENROLL_POLL_SECONDS=5
     KIOSK_HTTP_TIMEOUT=10
 
 Known v1 limitations (see docs/kiosk_deployment.md):
@@ -36,6 +37,7 @@ import logging
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -44,7 +46,7 @@ import requests
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / '.env')
 
 from biometric.daemon import run_until_shutdown
-from biometric.exceptions import BiometricDeviceNotFoundError
+from biometric.exceptions import BiometricDeviceNotFoundError, BiometricNotConnectedError
 from biometric.listener import BiometricListener
 from biometric.service import BiometricService
 
@@ -63,6 +65,7 @@ SERVER_URL = _required_env("KIOSK_SERVER_URL").rstrip('/')
 DEVICE_TOKEN = _required_env("KIOSK_DEVICE_TOKEN")
 DEVICE_ID = int(os.environ["KIOSK_DEVICE_ID"]) if os.environ.get("KIOSK_DEVICE_ID") else None
 REFRESH_SECONDS = int(os.environ.get("KIOSK_TEMPLATE_REFRESH_SECONDS", "300"))
+ENROLL_POLL_SECONDS = float(os.environ.get("KIOSK_ENROLL_POLL_SECONDS", "5"))
 HTTP_TIMEOUT = float(os.environ.get("KIOSK_HTTP_TIMEOUT", "10"))
 
 
@@ -169,6 +172,79 @@ def _acquire_singleton_lock() -> None:
     _singleton_mutex_handle = handle
 
 
+def _check_and_fulfill_enroll_request(listener: BiometricListener, service: BiometricService, on_template) -> None:
+    """
+    Poll the server for a pending remote-enroll request and, if one exists,
+    pause the normal listen loop, capture a fresh fingerprint for it, submit
+    it, and resume listening.
+
+    Always resumes the listener in `finally`, even on error, so a single
+    failed attempt never leaves the kiosk stuck ignoring finger taps.
+    """
+    try:
+        resp = requests.get(
+            f"{SERVER_URL}/biometric/api/enroll-requests/next/", headers=_headers(), timeout=HTTP_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException:
+        logger.warning("Falha ao consultar fila de cadastro remoto; tentando de novo no próximo ciclo.", exc_info=True)
+        return
+
+    if not data.get("has_pending"):
+        return
+
+    request_id = data["request_id"]
+    employee_id = data["employee_id"]
+    logger.info(
+        "Pedido remoto #%s pendente (funcionário #%s, %s); pausando escuta normal.",
+        request_id, employee_id, data.get("employee_name"),
+    )
+    listener.stop_listener()
+    try:
+        try:
+            if not service.is_connected:
+                service.connect(device_id=DEVICE_ID)
+            logger.info("Encoste o dedo 3 vezes para o pedido remoto #%s, levantando entre cada leitura...", request_id)
+            template = service.capture_registration(samples=3)
+        except (BiometricDeviceNotFoundError, BiometricNotConnectedError) as exc:
+            logger.error("Leitor indisponível para o pedido remoto #%s: %s", request_id, exc)
+            return
+        except TimeoutError:
+            logger.warning(
+                "Tempo esgotado aguardando o dedo (pedido remoto #%s); tentará de novo no próximo ciclo.", request_id,
+            )
+            return
+
+        try:
+            resp = requests.post(
+                f"{SERVER_URL}/biometric/api/enroll/",
+                headers=_headers(),
+                json={
+                    "employee_id": employee_id,
+                    "template_b64": base64.b64encode(template).decode('ascii'),
+                    "enroll_request_id": request_id,
+                },
+                timeout=HTTP_TIMEOUT,
+            )
+            if resp.ok:
+                logger.info("Pedido remoto #%s atendido: %s", request_id, resp.json())
+            else:
+                logger.error("Falha ao enviar pedido remoto #%s (%s): %s", request_id, resp.status_code, resp.text)
+        except requests.RequestException:
+            logger.exception(
+                "Erro de rede ao enviar pedido remoto #%s; o pedido segue pendente e será tentado de novo "
+                "(vai exigir capturar de novo — sem reenvio do template já lido).", request_id,
+            )
+    finally:
+        try:
+            if not service.is_connected:
+                service.connect(device_id=DEVICE_ID)
+            listener.start_listener(callback=on_template)
+        except BiometricDeviceNotFoundError as exc:
+            logger.error("Não foi possível retomar a escuta normal após o pedido remoto: %s", exc)
+
+
 def cmd_listen(args: argparse.Namespace) -> None:
     _acquire_singleton_lock()
     service = BiometricService()
@@ -221,8 +297,20 @@ def cmd_listen(args: argparse.Namespace) -> None:
         logger.info("Sinal de encerramento recebido.")
         stop_event.set()
 
+    # Throttled independently of run_until_shutdown's own poll_interval
+    # (kept short for responsive Ctrl+C handling) so the enroll queue isn't
+    # hit on every tick.
+    _next_enroll_check = {"at": 0.0}
+
+    def on_tick() -> None:
+        now = time.monotonic()
+        if now < _next_enroll_check["at"]:
+            return
+        _next_enroll_check["at"] = now + ENROLL_POLL_SECONDS
+        _check_and_fulfill_enroll_request(listener, service, on_template)
+
     logger.info("Kiosk agent em execução. Pressione Ctrl+C para parar.")
-    run_until_shutdown(listener, service, callback=on_template, on_shutdown=_on_shutdown)
+    run_until_shutdown(listener, service, callback=on_template, on_shutdown=_on_shutdown, on_tick=on_tick)
 
 
 def main() -> None:

@@ -3,6 +3,7 @@ Unit tests for EmployeeListView's "Histórico de Entradas" sidebar widget:
 shows 15 recent presence events with infinite-scroll continuation for the rest.
 """
 from datetime import date, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth.models import User
@@ -11,11 +12,19 @@ from django.urls import reverse
 from django.utils import timezone
 
 from attendance.models import PresenceEvent
+from biometric.exceptions import BiometricDeviceNotFoundError
+from biometric.models import BiometricEnrollRequest
 from employees.models import Employee
 
 
 def make_user():
     return User.objects.create_user(username="admin", password="pass")
+
+
+def make_admin_user():
+    # EmployeeEnrollView requires role admin/master (EditRequiredMixin);
+    # is_superuser maps to role 'master' (accounts.mixins.get_role).
+    return User.objects.create_user(username="boss", password="pass", is_superuser=True)
 
 
 def make_employee(**kw):
@@ -94,3 +103,91 @@ class TestEmployeeListHistoryWidget:
         assert len(remaining_expected) == 5
         # The compact partial renders the employee's name once per row.
         assert body['html'].count(emp.name) == 5
+
+
+@pytest.mark.django_db
+class TestEmployeeEnrollViewRemoteQueue:
+    """
+    When no local reader is found (always true on a server with no hardware
+    attached, e.g. the VPS), EmployeeEnrollView.post() now queues a
+    BiometricEnrollRequest for a remote kiosk instead of just erroring out.
+    """
+
+    def _post_capture(self, client, employee):
+        with patch("employees.views.BiometricService") as mock_service_cls:
+            mock_service_cls.return_value = MagicMock(
+                connect=MagicMock(side_effect=BiometricDeviceNotFoundError("no reader")),
+            )
+            return client.post(reverse('employees:enroll', kwargs={'pk': employee.pk}))
+
+    def test_no_local_reader_creates_pending_request(self):
+        user = make_admin_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        response = self._post_capture(client, emp)
+
+        assert response.status_code == 200  # re-rendered waiting state, no redirect
+        assert response.context['pending_request'] is not None
+        req = BiometricEnrollRequest.objects.get(employee=emp)
+        assert req.status == BiometricEnrollRequest.PENDING
+        assert req.requested_by == user
+
+    def test_second_click_does_not_duplicate_pending_request(self):
+        user = make_admin_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        self._post_capture(client, emp)
+        self._post_capture(client, emp)
+
+        assert BiometricEnrollRequest.objects.filter(employee=emp).count() == 1
+
+    def test_ajax_get_reports_waiting_while_pending(self):
+        user = make_admin_user()
+        emp = make_employee()
+        BiometricEnrollRequest.objects.create(employee=emp, requested_by=user)
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:enroll', kwargs={'pk': emp.pk}), HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['waiting'] is True
+        assert body['has_biometric'] is False
+
+    def test_ajax_get_reports_not_waiting_once_fulfilled(self):
+        user = make_admin_user()
+        emp = make_employee()
+        req = BiometricEnrollRequest.objects.create(employee=emp, requested_by=user)
+        req.mark_done()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:enroll', kwargs={'pk': emp.pk}), HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.json()['waiting'] is False
+
+    def test_cancel_marks_request_cancelled_and_stops_waiting(self):
+        user = make_admin_user()
+        emp = make_employee()
+        BiometricEnrollRequest.objects.create(employee=emp, requested_by=user)
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('employees:enroll', kwargs={'pk': emp.pk}), {'action': 'cancel'},
+        )
+
+        assert response.status_code == 302
+        req = BiometricEnrollRequest.objects.get(employee=emp)
+        assert req.status == BiometricEnrollRequest.CANCELLED
+        follow = client.get(reverse('employees:enroll', kwargs={'pk': emp.pk}))
+        assert follow.context['pending_request'] is None

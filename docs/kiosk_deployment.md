@@ -47,6 +47,7 @@ python manage.py kiosk_device revoke --id 3
    KIOSK_DEVICE_TOKEN=<token copiado no passo 1>
    KIOSK_DEVICE_ID=0
    KIOSK_TEMPLATE_REFRESH_SECONDS=300
+   KIOSK_ENROLL_POLL_SECONDS=5
    KIOSK_HTTP_TIMEOUT=10
    ```
 
@@ -59,6 +60,17 @@ python kiosk_agent.py enroll --employee-id 42
 ```
 
 Pede 3 toques do mesmo dedo (com o dedo levantado entre um toque e outro), mescla as amostras e envia o template pronto para o servidor via `/biometric/api/enroll/`.
+
+## 4.1 Cadastro remoto disparado pelo site (fila de pedidos)
+
+Além do comando manual acima, o botão "Cadastrar Biometria" no site funciona mesmo quando o servidor Django não tem leitor físico (ex.: rodando num VPS) — o clique cria um pedido pendente que o quiosque atende sozinho, sem nenhum comando manual:
+
+1. Um admin clica "Cadastrar Biometria" na página de um funcionário. Como o servidor não acha um leitor local, em vez de só mostrar erro ele grava um `BiometricEnrollRequest` pendente e a página passa a mostrar "Aguardando leitor do quiosque remoto...", atualizando sozinha (polling AJAX a cada 3s).
+2. O `kiosk_agent.py listen`, que já está rodando continuamente no quiosque (seção 5), consulta `GET /biometric/api/enroll-requests/next/` a cada `KIOSK_ENROLL_POLL_SECONDS` (padrão 5s, ver seção 3).
+3. Ao encontrar um pedido pendente, ele pausa a escuta normal de ponto, pede 3 toques do dedo (mesmo fluxo do `enroll` manual), envia o template para `/biometric/api/enroll/` (incluindo o id do pedido), e retoma a escuta normal — tudo automaticamente.
+4. A página do site detecta a conclusão no próximo poll e recarrega, mostrando o status atualizado.
+
+Se o quiosque estiver offline ou ninguém aparecer no leitor, o pedido continua pendente e será tentado de novo a cada ciclo — não há expiração automática (ver seção 8). O admin pode clicar "Cancelar solicitação" na própria página a qualquer momento.
 
 ## 5. Rodar o reconhecimento contínuo
 
@@ -100,3 +112,6 @@ Atualize o `.env` do quiosque com o novo token e reinicie o serviço/processo.
 - **Sem fila offline**: se o quiosque perder conexão com o servidor no momento de um toque, o evento é registrado no log local e **descartado** — não há retentativa automática nem fila de reenvio.
 - **Atraso de sincronização**: um funcionário recém-cadastrado ou reativado pode levar até `KIOSK_TEMPLATE_REFRESH_SECONDS` (padrão 5 min) para ser reconhecido pelo quiosque.
 - **Sem interface de gestão de dispositivos**: criação/revogação de tokens é só via linha de comando (`kiosk_device`), sem tela administrativa.
+- **Pedidos de cadastro remoto (seção 4.1) não expiram sozinhos**: se o quiosque ficar offline por muito tempo, o pedido fica pendente indefinidamente até alguém cancelar manualmente pela página do site.
+- **Um único quiosque físico é assumido**: não há coordenação se mais de um `kiosk_agent.py listen` fizer polling da mesma fila de pedidos ao mesmo tempo (o endpoint só devolve o pedido mais antigo, sem "reservá-lo").
+- **Retentativa sem backoff**: se ninguém aparecer no leitor para um pedido pendente, o quiosque tenta capturar de novo a cada `KIOSK_ENROLL_POLL_SECONDS`, até o pedido ser atendido ou cancelado.

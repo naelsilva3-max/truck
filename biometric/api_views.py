@@ -15,6 +15,7 @@ import json
 import logging
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -23,7 +24,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from attendance.service import AttendanceService
 from biometric.auth import DeviceTokenAuthMixin
-from biometric.models import BiometricTemplate
+from biometric.models import BiometricEnrollRequest, BiometricTemplate
 from employees.models import Employee
 
 logger = logging.getLogger(__name__)
@@ -58,8 +59,11 @@ class KioskEnrollView(DeviceTokenAuthMixin, View):
             bio.template = template_bytes
             bio.finger_index = finger_index
 
+        enroll_request_id = payload.get('enroll_request_id')
         try:
-            bio.save()  # BiometricTemplate.save() already calls full_clean() — reused, not duplicated.
+            with transaction.atomic():
+                bio.save()  # BiometricTemplate.save() already calls full_clean() — reused, not duplicated.
+                _close_enroll_request(employee, enroll_request_id, device=self.device)
         except ValidationError as exc:
             return JsonResponse({'error': 'invalid_template', 'detail': exc.message_dict}, status=400)
 
@@ -68,6 +72,51 @@ class KioskEnrollView(DeviceTokenAuthMixin, View):
             self.device.name, 'cadastrou' if created else 'atualizou', employee.pk,
         )
         return JsonResponse({'status': 'ok', 'employee_id': employee.pk, 'created': created})
+
+
+def _close_enroll_request(employee: Employee, enroll_request_id, device) -> None:
+    """
+    Mark the `BiometricEnrollRequest` this enroll fulfills as done, if any.
+
+    If `enroll_request_id` was given (the kiosk's `listen` loop always sends
+    it when fulfilling a queued request), close exactly that one — a no-op
+    if it's no longer pending (e.g. cancelled from the web UI in the
+    meantime). Otherwise fall back to the employee's oldest pending request,
+    for compatibility with `kiosk_agent.py enroll --employee-id`, which
+    doesn't know about any specific request.
+    """
+    qs = BiometricEnrollRequest.objects.filter(status=BiometricEnrollRequest.PENDING)
+    if enroll_request_id is not None:
+        try:
+            req = qs.filter(pk=int(enroll_request_id)).first()
+        except (TypeError, ValueError):
+            req = None
+    else:
+        req = qs.filter(employee=employee).order_by('requested_at').first()
+    if req is not None:
+        req.mark_done(device=device)
+
+
+class KioskEnrollRequestNextView(DeviceTokenAuthMixin, View):
+    """GET → the oldest pending remote-enroll request, or none."""
+
+    def get(self, request):
+        req = (
+            BiometricEnrollRequest.objects
+            .filter(status=BiometricEnrollRequest.PENDING)
+            .select_related('employee')
+            .order_by('requested_at')
+            .first()
+        )
+        if req is None:
+            return JsonResponse({'has_pending': False})
+        return JsonResponse({
+            'has_pending': True,
+            'request_id': req.pk,
+            'employee_id': req.employee_id,
+            'employee_name': req.employee.name,
+            'requested_at': req.requested_at.isoformat(),
+        })
 
 
 class KioskTemplateSyncView(DeviceTokenAuthMixin, View):

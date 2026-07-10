@@ -11,7 +11,7 @@ from django.test import Client
 from django.urls import reverse
 
 from attendance.models import AttendanceRecord
-from biometric.models import BiometricTemplate, KioskDevice
+from biometric.models import BiometricEnrollRequest, BiometricTemplate, KioskDevice
 from employees.models import Employee
 
 
@@ -93,6 +93,111 @@ class TestKioskEnrollView:
         oversized_b64 = base64.b64encode(b'x' * 20_000).decode()  # > 10KB model limit
         response = self._post(client, device, {'employee_id': emp.pk, 'template_b64': oversized_b64})
         assert response.status_code == 400
+
+    def test_enroll_request_id_closes_that_specific_request(self, device):
+        emp = make_employee()
+        req = BiometricEnrollRequest.objects.create(employee=emp)
+        other_req = BiometricEnrollRequest.objects.create(employee=make_employee(name="Outro"))
+        client = Client()
+
+        response = self._post(client, device, {
+            'employee_id': emp.pk,
+            'template_b64': base64.b64encode(b'x' * 64).decode(),
+            'enroll_request_id': req.pk,
+        })
+
+        assert response.status_code == 200
+        req.refresh_from_db()
+        assert req.status == BiometricEnrollRequest.DONE
+        assert req.completed_at is not None
+        assert req.fulfilled_by_device is not None
+        other_req.refresh_from_db()
+        assert other_req.status == BiometricEnrollRequest.PENDING
+
+    def test_without_enroll_request_id_closes_oldest_pending_for_employee(self, device):
+        emp = make_employee()
+        req = BiometricEnrollRequest.objects.create(employee=emp)
+        client = Client()
+
+        response = self._post(client, device, {
+            'employee_id': emp.pk,
+            'template_b64': base64.b64encode(b'x' * 64).decode(),
+        })
+
+        assert response.status_code == 200
+        req.refresh_from_db()
+        assert req.status == BiometricEnrollRequest.DONE
+
+    def test_enroll_request_id_already_closed_is_a_no_op(self, device):
+        emp = make_employee()
+        req = BiometricEnrollRequest.objects.create(employee=emp)
+        req.mark_cancelled()
+        client = Client()
+
+        response = self._post(client, device, {
+            'employee_id': emp.pk,
+            'template_b64': base64.b64encode(b'x' * 64).decode(),
+            'enroll_request_id': req.pk,
+        })
+
+        assert response.status_code == 200
+        req.refresh_from_db()
+        assert req.status == BiometricEnrollRequest.CANCELLED  # untouched, not re-opened/closed
+        assert BiometricTemplate.objects.filter(employee=emp).exists()
+
+
+@pytest.mark.django_db
+class TestKioskEnrollRequestNextView:
+    def test_requires_auth(self):
+        client = Client()
+        response = client.get(reverse('biometric:api_enroll_requests_next'))
+        assert response.status_code == 401
+
+    def test_no_pending_requests(self, device):
+        client = Client()
+        response = client.get(reverse('biometric:api_enroll_requests_next'), **_auth_headers(device))
+        assert response.status_code == 200
+        assert response.json() == {'has_pending': False}
+
+    def test_returns_pending_request_fields(self, device):
+        emp = make_employee(name="Fulano")
+        req = BiometricEnrollRequest.objects.create(employee=emp)
+        client = Client()
+
+        response = client.get(reverse('biometric:api_enroll_requests_next'), **_auth_headers(device))
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['has_pending'] is True
+        assert body['request_id'] == req.pk
+        assert body['employee_id'] == emp.pk
+        assert body['employee_name'] == "Fulano"
+
+    def test_returns_oldest_pending_when_multiple(self, device):
+        emp1 = make_employee(name="Primeiro")
+        emp2 = make_employee(name="Segundo")
+        older = BiometricEnrollRequest.objects.create(employee=emp1)
+        BiometricEnrollRequest.objects.filter(pk=older.pk).update(
+            requested_at=older.requested_at - timedelta(minutes=5)
+        )
+        BiometricEnrollRequest.objects.create(employee=emp2)
+        client = Client()
+
+        response = client.get(reverse('biometric:api_enroll_requests_next'), **_auth_headers(device))
+
+        assert response.json()['request_id'] == older.pk
+
+    def test_ignores_done_and_cancelled_requests(self, device):
+        emp = make_employee()
+        done = BiometricEnrollRequest.objects.create(employee=emp)
+        done.mark_done()
+        cancelled = BiometricEnrollRequest.objects.create(employee=emp)
+        cancelled.mark_cancelled()
+        client = Client()
+
+        response = client.get(reverse('biometric:api_enroll_requests_next'), **_auth_headers(device))
+
+        assert response.json() == {'has_pending': False}
 
 
 @pytest.mark.django_db

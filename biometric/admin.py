@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BiometricTemplate, KioskDevice
+from .models import BiometricEnrollRequest, BiometricTemplate, KioskDevice
 
 
 @admin.register(KioskDevice)
@@ -36,6 +36,30 @@ class BiometricTemplateAdmin(admin.ModelAdmin):
             return f'{len(bytes(obj.template))} bytes'
         return '—'
     template_size_bytes.short_description = 'Tamanho do template'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(BiometricEnrollRequest)
+class BiometricEnrollRequestAdmin(admin.ModelAdmin):
+    """
+    Read-only admin — gives operational visibility into stuck/pending
+    requests. Requests are only created by the web enroll flow and closed
+    by the kiosk API or the "Cancelar solicitação" button.
+    """
+    list_display = ('employee', 'status', 'requested_by', 'requested_at', 'completed_at', 'fulfilled_by_device')
+    list_filter = ('status',)
+    readonly_fields = (
+        'employee', 'status', 'requested_by', 'requested_at', 'completed_at', 'fulfilled_by_device',
+    )
+    search_fields = ('employee__name',)
 
     def has_add_permission(self, request):
         return False

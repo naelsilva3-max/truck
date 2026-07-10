@@ -4,7 +4,7 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -15,7 +15,7 @@ from accounts.logging import log_action
 from accounts.mixins import EditRequiredMixin
 from accounts.models import SystemLog
 from biometric.exceptions import BiometricDeviceNotFoundError, BiometricNotConnectedError
-from biometric.models import BiometricTemplate
+from biometric.models import BiometricEnrollRequest, BiometricTemplate
 from biometric.service import BiometricService
 from employee_truck_control.http import infinite_scroll_json, is_ajax_request
 
@@ -164,16 +164,40 @@ class EmployeeEnrollView(EditRequiredMixin, View):
     def get(self, request, pk: int):
         employee = get_object_or_404(Employee, pk=pk)
         has_biometric = hasattr(employee, 'biometric') # Check if related object exists
-        return render(request, self.template_name, {"employee": employee, "has_biometric": has_biometric})
+        pending_request = (
+            BiometricEnrollRequest.objects
+            .filter(employee=employee, status=BiometricEnrollRequest.PENDING)
+            .order_by('-requested_at')
+            .first()
+        )
+        if is_ajax_request(request):
+            return JsonResponse({
+                'waiting': pending_request is not None,
+                'has_biometric': has_biometric,
+                'request_id': pending_request.pk if pending_request else None,
+            })
+        return render(request, self.template_name, {
+            "employee": employee, "has_biometric": has_biometric, "pending_request": pending_request,
+        })
 
     def post(self, request, pk: int):
         employee = get_object_or_404(Employee, pk=pk)
+
+        if request.POST.get('action') == 'cancel':
+            return self._cancel_pending(request, employee)
+
         service = self._get_biometric_service()
 
         try:
             service.connect()
         except BiometricDeviceNotFoundError:
-            messages.error(request, "Leitor biométrico não encontrado. Verifique se o dispositivo ZKTeco ZK9500 está conectado e tente novamente.")
+            pending_request, created = BiometricEnrollRequest.get_or_create_pending(
+                employee=employee,
+                requested_by=request.user if request.user.is_authenticated else None,
+            )
+            if created:
+                log_action(request, SystemLog.ACTION_UPDATE, f'Solicitação de biometria remota criada para {employee.name}')
+            messages.info(request, "Nenhum leitor local encontrado. Aguardando o quiosque remoto...")
             return self._render_with_biometric_status(request, employee)
 
         template_bytes: bytes | None = None
@@ -226,6 +250,18 @@ class EmployeeEnrollView(EditRequiredMixin, View):
         # Reuse the logic from the get method to avoid duplication
         # This will re-evaluate has_biometric based on the current state
         return self.get(request, employee.pk)
+
+    def _cancel_pending(self, request, employee: Employee):
+        # Single-statement UPDATE instead of fetch-then-save: races safely
+        # against the kiosk API closing the same request via mark_done() —
+        # whichever side runs first "wins" the row, the other is a no-op.
+        updated = BiometricEnrollRequest.objects.filter(
+            employee=employee, status=BiometricEnrollRequest.PENDING,
+        ).update(status=BiometricEnrollRequest.CANCELLED, completed_at=timezone.now())
+        if updated:
+            log_action(request, SystemLog.ACTION_UPDATE, f'Solicitação de biometria remota cancelada para {employee.name}')
+            messages.info(request, "Solicitação de cadastro remoto cancelada.")
+        return redirect("employees:enroll", pk=employee.pk)
 
 
 class EmployeeReportPDFView(LoginRequiredMixin, View):

@@ -6,7 +6,7 @@ from datetime import date
 import pytest
 from django.core.exceptions import ValidationError
 
-from biometric.models import BiometricTemplate, KioskDevice
+from biometric.models import BiometricEnrollRequest, BiometricTemplate, KioskDevice
 from employees.models import Employee
 
 
@@ -104,3 +104,58 @@ class TestKioskDeviceAuthenticate:
         device.is_active = False
         device.save(update_fields=['is_active'])
         assert KioskDevice.authenticate(raw_token) is None
+
+
+@pytest.mark.django_db
+class TestBiometricEnrollRequestGetOrCreatePending:
+    def test_creates_new_pending_request(self):
+        emp = make_employee()
+        req, created = BiometricEnrollRequest.get_or_create_pending(employee=emp)
+        assert created is True
+        assert req.status == BiometricEnrollRequest.PENDING
+        assert req.employee_id == emp.pk
+
+    def test_reuses_existing_pending_request(self):
+        emp = make_employee()
+        first, _ = BiometricEnrollRequest.get_or_create_pending(employee=emp)
+        second, created = BiometricEnrollRequest.get_or_create_pending(employee=emp)
+        assert created is False
+        assert second.pk == first.pk
+        assert BiometricEnrollRequest.objects.filter(employee=emp).count() == 1
+
+    def test_creates_new_request_after_previous_one_done(self):
+        emp = make_employee()
+        first, _ = BiometricEnrollRequest.get_or_create_pending(employee=emp)
+        first.mark_done()
+        second, created = BiometricEnrollRequest.get_or_create_pending(employee=emp)
+        assert created is True
+        assert second.pk != first.pk
+
+    def test_creates_new_request_after_previous_one_cancelled(self):
+        emp = make_employee()
+        first, _ = BiometricEnrollRequest.get_or_create_pending(employee=emp)
+        first.mark_cancelled()
+        second, created = BiometricEnrollRequest.get_or_create_pending(employee=emp)
+        assert created is True
+        assert second.pk != first.pk
+
+
+@pytest.mark.django_db
+class TestBiometricEnrollRequestMarkMethods:
+    def test_mark_done_sets_status_and_timestamps(self):
+        emp = make_employee()
+        req = BiometricEnrollRequest.objects.create(employee=emp)
+        device, _ = KioskDevice.issue(name="Quiosque")
+        req.mark_done(device=device)
+        req.refresh_from_db()
+        assert req.status == BiometricEnrollRequest.DONE
+        assert req.completed_at is not None
+        assert req.fulfilled_by_device_id == device.pk
+
+    def test_mark_cancelled_sets_status_and_timestamp(self):
+        emp = make_employee()
+        req = BiometricEnrollRequest.objects.create(employee=emp)
+        req.mark_cancelled()
+        req.refresh_from_db()
+        assert req.status == BiometricEnrollRequest.CANCELLED
+        assert req.completed_at is not None
