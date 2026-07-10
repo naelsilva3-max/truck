@@ -14,6 +14,7 @@ from django.views import View
 
 from accounts.mixins import EditRequiredMixin
 from employee_truck_control.http import infinite_scroll_json, is_ajax_request, parse_date_param
+from employee_truck_control.validators import validate_image_file
 from employees.models import Employee
 from .forms import TruckAssignmentForm, TruckForm
 from .models import Truck, TruckAssignment, TruckBrand, TruckModel, TruckPhoto
@@ -48,6 +49,8 @@ def save_truck_photos(truck: Truck, files) -> None:
     """Append uploaded images to the truck's photo gallery, continuing the display order."""
     if not files:
         return
+    for image in files:
+        validate_image_file(image)
     next_order = (truck.photos.count())
     for offset, image in enumerate(files):
         TruckPhoto.objects.create(truck=truck, image=image, order=next_order + offset)
@@ -160,14 +163,25 @@ class TruckCreateView(EditRequiredMixin, View):
 
     def post(self, request):
         form = TruckForm(request.POST, request.FILES)
-        if form.is_valid():
-            try:
-                truck = form.save()
-                save_truck_photos(truck, request.FILES.getlist('photos'))
-                messages.success(request, f'Caminhão {truck.license_plate} cadastrado com sucesso.')
-                return redirect('trucks:detail', pk=truck.pk)
-            except ValidationError as exc:
-                form.add_error(None, exc)
+        photos = request.FILES.getlist('photos')
+        photo_error = None
+        try:
+            for image in photos:
+                validate_image_file(image)
+        except ValidationError as exc:
+            photo_error = exc
+
+        # Validate photos before touching the database — otherwise an
+        # invalid photo submitted alongside valid truck fields would leave
+        # behind an orphan Truck row with no photos and a form error.
+        if form.is_valid() and photo_error is None:
+            truck = form.save()
+            save_truck_photos(truck, photos)
+            messages.success(request, f'Caminhão {truck.license_plate} cadastrado com sucesso.')
+            return redirect('trucks:detail', pk=truck.pk)
+
+        if photo_error is not None:
+            form.add_error(None, photo_error)
         return render(request, 'trucks/form.html', {
             'form': form, 'action': 'Cadastrar',
         })
@@ -197,18 +211,29 @@ class TruckUpdateView(EditRequiredMixin, View):
     def post(self, request, pk):
         truck = get_object_or_404(Truck, pk=pk)
         form = TruckForm(request.POST, request.FILES, instance=truck)
-        if form.is_valid():
-            try:
-                form.save()
-                delete_ids = request.POST.getlist('delete_photos')
-                if delete_ids:
-                    for photo in truck.photos.filter(pk__in=delete_ids):
-                        photo.delete()
-                save_truck_photos(truck, request.FILES.getlist('photos'))
-                messages.success(request, 'Caminhão atualizado com sucesso.')
-                return redirect('trucks:detail', pk=pk)
-            except ValidationError as exc:
-                form.add_error(None, exc)
+        photos = request.FILES.getlist('photos')
+        photo_error = None
+        try:
+            for image in photos:
+                validate_image_file(image)
+        except ValidationError as exc:
+            photo_error = exc
+
+        # Validate photos before saving the form or deleting any existing
+        # photo — otherwise an invalid new photo would leave the truck's
+        # other fields saved and old photos deleted, with just a form error.
+        if form.is_valid() and photo_error is None:
+            form.save()
+            delete_ids = request.POST.getlist('delete_photos')
+            if delete_ids:
+                for photo in truck.photos.filter(pk__in=delete_ids):
+                    photo.delete()
+            save_truck_photos(truck, photos)
+            messages.success(request, 'Caminhão atualizado com sucesso.')
+            return redirect('trucks:detail', pk=pk)
+
+        if photo_error is not None:
+            form.add_error(None, photo_error)
         return render(request, 'trucks/form.html', {
             'form': form, 'action': 'Salvar', 'truck': truck,
         })

@@ -1,6 +1,7 @@
 from django import forms
 from django.utils import timezone
 
+from employee_truck_control.validators import validate_image_file
 from employees.models import Employee
 from .models import Visitor, Visit
 
@@ -95,6 +96,18 @@ class VisitorForm(forms.ModelForm):
             if qs.exists():
                 raise forms.ValidationError('Já existe um visitante cadastrado com este telefone.')
         return phone
+
+    def clean_photo(self):
+        photo = self.cleaned_data.get('photo')
+        if photo and hasattr(photo, 'read'):
+            validate_image_file(photo)
+        return photo
+
+    def clean_document_photo(self):
+        doc = self.cleaned_data.get('document_photo')
+        if doc and hasattr(doc, 'read'):
+            validate_image_file(doc)
+        return doc
 
     def clean(self):
         cleaned = super().clean()
