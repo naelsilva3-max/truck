@@ -285,6 +285,44 @@ def _check_and_fulfill_enroll_request(listener: BiometricListener, service: Biom
             logger.error("Não foi possível retomar a escuta normal após o pedido remoto: %s", exc)
 
 
+def _notify_scan_success(employee_name: str, direction: str) -> None:
+    """
+    Give immediate on-screen + audible feedback for a successful scan.
+
+    `kiosk_agent_service.exe` (the Scheduled Task build) runs with no
+    console, so without this the person at the reader has no way to know
+    the touch actually registered. Runs in its own daemon thread so it
+    never blocks `on_template`/the listener loop while waiting to be
+    dismissed (or to time out).
+    """
+    if sys.platform != "win32":
+        return
+
+    def _show() -> None:
+        try:
+            import winsound
+            winsound.Beep(1500, 200)
+        except Exception:
+            logger.exception("Falha ao tocar o som de confirmação.")
+        try:
+            import ctypes
+            label = "Entrada" if direction == "IN" else "Saída"
+            text = f"{employee_name}\n{label} registrada"
+            MB_ICONINFORMATION = 0x40
+            MB_TOPMOST = 0x40000
+            TIMEOUT_MS = 4000
+            # MessageBoxTimeoutW is undocumented but has shipped in
+            # user32.dll since Windows 2000 -- used so the popup
+            # auto-dismisses instead of piling up unattended.
+            ctypes.windll.user32.MessageBoxTimeoutW(
+                0, text, "Ponto registrado", MB_ICONINFORMATION | MB_TOPMOST, 0, TIMEOUT_MS,
+            )
+        except Exception:
+            logger.exception("Falha ao mostrar o popup de confirmação.")
+
+    threading.Thread(target=_show, daemon=True).start()
+
+
 def cmd_listen(args: argparse.Namespace) -> None:
     _acquire_singleton_lock()
     service = BiometricService()
@@ -324,7 +362,9 @@ def cmd_listen(args: argparse.Namespace) -> None:
                 timeout=HTTP_TIMEOUT,
             )
             if resp.ok:
-                logger.info("Ponto registrado: %s", resp.json())
+                body = resp.json()
+                logger.info("Ponto registrado: %s", body)
+                _notify_scan_success(body.get("employee_name", f"Funcionário #{employee_id}"), body.get("direction", ""))
             else:
                 # v1 limitation: log + drop. No offline queue/retry — see docs/kiosk_deployment.md.
                 logger.error("Falha ao registrar ponto (%s): %s", resp.status_code, resp.text)

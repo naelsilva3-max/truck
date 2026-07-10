@@ -163,6 +163,7 @@ class KioskScanReportView(DeviceTokenAuthMixin, View):
         return JsonResponse({
             'status': 'ok',
             'employee_id': employee_id,
+            'employee_name': record.employee.name,
             'direction': direction,
             'timestamp': ts.isoformat() if ts else None,
             'record_id': record.pk,

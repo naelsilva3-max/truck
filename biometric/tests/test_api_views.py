@@ -253,6 +253,7 @@ class TestKioskScanReportView:
         assert response.status_code == 200
         body = response.json()
         assert body['direction'] == 'IN'
+        assert body['employee_name'] == emp.name
 
     def test_second_scan_records_exit(self, device):
         emp = make_employee()
