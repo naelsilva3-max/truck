@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Gerar Token de Quiosque{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Gerar Token de Quiosque</h1>
+</div>
+
+<div class="alert alert--info">
+  Use isso para autorizar um novo computador (quiosque) a se conectar com o leitor biométrico remoto.
+  O token gerado aqui é o mesmo que o instalador do quiosque pede durante a instalação.
+</div>
+
+{% if raw_token %}
+<div class="card mb-3 card--accent-success">
+  <h2>Token gerado para "{{ new_device.name }}"</h2>
+  <div class="alert alert--warning">
+    <strong>Copie agora — este token não será exibido novamente.</strong> Se perder, revogue-o abaixo e gere um novo.
+  </div>
+  <p><code id="token-value">{{ raw_token }}</code></p>
+  <button type="button" class="btn btn--secondary btn--sm" onclick="navigator.clipboard.writeText(document.getElementById('token-value').textContent)">Copiar</button>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+  <h2>Novo token</h2>
+  <form method="post" class="enroll-form">
+    {% csrf_token %}
+    <div class="form-group">
+      <label for="id_name" class="form-label">Nome do quiosque</label>
+      <input type="text" id="id_name" name="name" class="form-control" placeholder='Ex.: "Recepção - Matriz"' required>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">Gerar Token</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Dispositivos existentes</h2>
+  {% if devices %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Status</th>
+          <th>Prefixo do token</th>
+          <th>Criado em</th>
+          <th>Último acesso</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for device in devices %}
+        <tr>
+          <td>{{ device.name }}</td>
+          <td>
+            {% if device.is_active %}
+              <span class="badge badge--success">Ativo</span>
+            {% else %}
+              <span class="badge badge--warning">Revogado</span>
+            {% endif %}
+          </td>
+          <td><code>{{ device.token_prefix }}…</code></td>
+          <td>{{ device.created_at|date:"d/m/Y H:i" }}</td>
+          <td>{{ device.last_seen_at|date:"d/m/Y H:i"|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-muted text-sm mt-2">
+    Para revogar um dispositivo, use <code>python manage.py kiosk_device revoke --id N</code> no servidor.
+  </p>
+  {% else %}
+    <p class="text-muted">Nenhum dispositivo cadastrado ainda.</p>
+  {% endif %}
+</div>
+{% endblock %}

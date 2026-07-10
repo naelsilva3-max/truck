@@ -32,7 +32,9 @@
             {% if is_master %}
               <a href="{% url 'accounts:manage_users' %}">Usuários</a>
               <a href="{% url 'accounts:system_logs' %}">Log do Sistema</a>
+              <a href="{% url 'biometric:kiosk_token' %}">Gerar Token de Quiosque</a>
             {% endif %}
+            <a href="{% url 'password_change' %}">Alterar Senha</a>
             <form method="post" action="{% url 'logout' %}" class="navbar-dropdown-form">
               {% csrf_token %}
               <button type="submit" class="navbar-dropdown-item">Sair</button>

@@ -17,9 +17,12 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views import View
 
+from accounts.logging import log_action
+from accounts.mixins import MasterRequiredMixin
+from accounts.models import SystemLog
 from attendance.models import PresenceEvent
 from attendance.service import AttendanceService
-from biometric.models import BiometricTemplate
+from biometric.models import BiometricTemplate, KioskDevice
 
 
 class StaffRequiredMixin(UserPassesTestMixin):
@@ -94,4 +97,34 @@ class BiometricSimulatorView(LoginRequiredMixin, StaffRequiredMixin, View):
                 'is_in': direction == PresenceEvent.IN,
                 'record': record,
             },
+        })
+
+
+class KioskTokenGenerateView(MasterRequiredMixin, View):
+    """
+    Web equivalent of `python manage.py kiosk_device create --name "..."` —
+    lets an admin issue a new kiosk device token from the site instead of
+    needing SSH access to the server. The raw token is only ever available
+    in the response to the POST that creates it (only its hash is persisted,
+    same as the CLI command) -- reloading or revisiting this page never
+    shows it again.
+    """
+    template_name = 'biometric/kiosk_token.html'
+
+    def _devices(self):
+        return KioskDevice.objects.order_by('name')
+
+    def get(self, request):
+        return render(request, self.template_name, {'devices': self._devices(), 'raw_token': None, 'new_device': None})
+
+    def post(self, request):
+        name = request.POST.get('name', '').strip()
+        if not name:
+            messages.error(request, 'Informe um nome para o quiosque.')
+            return render(request, self.template_name, {'devices': self._devices(), 'raw_token': None, 'new_device': None})
+
+        device, raw_token = KioskDevice.issue(name)
+        log_action(request, SystemLog.ACTION_UPDATE, f'Token de quiosque gerado: {device.name}')
+        return render(request, self.template_name, {
+            'devices': self._devices(), 'raw_token': raw_token, 'new_device': device,
         })
