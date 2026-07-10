@@ -27,6 +27,7 @@ from trucks.views import get_current_driver
 valid_name = st.text(
     alphabet=st.characters(blacklist_categories=("Cs",), blacklist_characters="\x00"),
     min_size=1,
+    max_size=200,
 ).filter(lambda s: s.strip() != "")
 
 valid_hire_date = st.dates(min_value=date(1970, 1, 1), max_value=date.today())
