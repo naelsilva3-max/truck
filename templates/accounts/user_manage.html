@@ -28,5 +28,9 @@ window.startLivePoll({
   tbodyId: 'infinite-tbody',
   url: '{% url "accounts:manage_users" %}'
 });
+window.startLiveUpdate({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "accounts:manage_users" %}'
+});
 </script>
 {% endblock %}

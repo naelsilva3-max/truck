@@ -1,6 +1,6 @@
 {% load static %}
 {% for employee in employees %}
-<tr data-timestamp="{{ employee.created_at|date:'c' }}"{% if not employee.is_active %} class="row-inactive"{% endif %}>
+<tr data-row-id="{{ employee.pk }}" data-timestamp="{{ employee.created_at|date:'c' }}" data-updated-timestamp="{{ employee.updated_at|date:'c' }}"{% if not employee.is_active %} class="row-inactive"{% endif %}>
   <td class="photo-cell">
     <img src="{% if employee.photo %}{{ employee.photo.url }}{% else %}{% static 'images/profile_placeholder.png' %}{% endif %}" alt="{{ employee.name }}" class="photo-thumb photo-thumb--list">
   </td>

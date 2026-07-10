@@ -1,5 +1,5 @@
 {% for u in users %}
-<tr data-timestamp="{{ u.date_joined|date:'c' }}">
+<tr data-row-id="{{ u.pk }}" data-timestamp="{{ u.date_joined|date:'c' }}" data-updated-timestamp="{{ u.profile.updated_at|date:'c' }}">
   <td>{{ u.username }}</td>
   <td>
     {{ u.email|default:"—" }}

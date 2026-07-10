@@ -20,14 +20,67 @@ class AttendanceListView(LoginRequiredMixin, View):
     """Per-employee attendance records with optional date filter."""
 
     template_name = 'attendance/list.html'
+    LIVE_POLL_LIMIT = 50
+
+    def _filtered_records(self, employee_id, request):
+        start_date = parse_date_param(request.GET.get('start_date'))
+        end_date = parse_date_param(request.GET.get('end_date'))
+        return AttendanceService().list_records(employee_id=employee_id, start_date=start_date, end_date=end_date)
+
+    def _poll_response(self, employee_id, request, since):
+        """New check-ins (brand-new AttendanceRecord rows) since `since`."""
+        since_dt = parse_datetime(since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            new_records = []
+        else:
+            new_records = list(
+                self._filtered_records(employee_id, request)
+                .filter(created_at__gt=since_dt).order_by('-created_at')[:self.LIVE_POLL_LIMIT]
+            )
+
+        html = render_to_string('attendance/_record_rows.html', {'records': new_records}, request=request)
+        newest = new_records[0].created_at.isoformat() if new_records else since
+
+        return JsonResponse({'html': html, 'count': len(new_records), 'newest': newest})
+
+    def _update_response(self, employee_id, request, changed_since):
+        """A record that already exists gets its exit_time filled in later
+        (checkout), on the same row created at check-in — that's the case
+        this catches, via AttendanceRecord.updated_at."""
+        since_dt = parse_datetime(changed_since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            changed_records = []
+        else:
+            changed_records = list(
+                self._filtered_records(employee_id, request)
+                .filter(updated_at__gt=since_dt).order_by('-updated_at')[:self.LIVE_POLL_LIMIT]
+            )
+
+        html = render_to_string('attendance/_record_rows.html', {'records': changed_records}, request=request)
+        newest = changed_records[0].updated_at.isoformat() if changed_records else changed_since
+
+        return JsonResponse({'html': html, 'count': len(changed_records), 'newest': newest, 'removed_ids': []})
 
     def get(self, request, pk):
         employee = get_object_or_404(Employee, pk=pk)
+
+        if is_ajax_request(request):
+            since = request.GET.get('since')
+            if since:
+                return self._poll_response(employee.pk, request, since)
+            changed_since = request.GET.get('changed_since')
+            if changed_since:
+                return self._update_response(employee.pk, request, changed_since)
+
+        records = self._filtered_records(employee.pk, request)
         start_date = parse_date_param(request.GET.get('start_date'))
         end_date = parse_date_param(request.GET.get('end_date'))
-
-        service = AttendanceService()
-        records = service.list_records(employee_id=employee.pk, start_date=start_date, end_date=end_date)
 
         return render(request, self.template_name, {
             'employee': employee,

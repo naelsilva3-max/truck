@@ -1,0 +1,13 @@
+{% for record in records %}
+<tr data-row-id="{{ record.pk }}" data-timestamp="{{ record.created_at|date:'c' }}" data-updated-timestamp="{{ record.updated_at|date:'c' }}">
+  <td>{{ record.date }}</td>
+  <td>{{ record.entry_time|date:"d/m/Y H:i" }}</td>
+  <td>
+    {% if record.exit_time %}
+      {{ record.exit_time|date:"d/m/Y H:i" }}
+    {% else %}
+      <span class="text-muted">—</span>
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}

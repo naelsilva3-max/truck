@@ -116,3 +116,93 @@ class TestEmployeeListPresenceWidgetEmptyState:
         assert response.status_code == 200
         assert b'history-tbody' in response.content
         assert b'startLivePoll' in response.content
+
+
+@pytest.mark.django_db
+class TestAttendanceListLivePolling:
+    def test_new_check_in_is_picked_up_via_poll(self):
+        from attendance.service import AttendanceService
+
+        user = make_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        since = timezone.now().isoformat()
+        AttendanceService().record_entry(emp.pk)
+
+        response = client.get(
+            reverse('attendance:list', kwargs={'pk': emp.pk}),
+            {'since': since},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['count'] == 1
+
+    def test_checkout_on_open_record_is_picked_up_via_update(self):
+        import time
+
+        from attendance.service import AttendanceService
+
+        user = make_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        svc = AttendanceService()
+        svc.record_entry(emp.pk)
+
+        changed_since = timezone.now().isoformat()
+        time.sleep(1.1)  # AttendanceRecord requires exit_time >= entry_time + 1s
+        svc.record_exit(emp.pk)
+
+        response = client.get(
+            reverse('attendance:list', kwargs={'pk': emp.pk}),
+            {'changed_since': changed_since},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['count'] == 1
+        assert body['removed_ids'] == []
+        # The re-rendered row must show an actual exit time now, not the
+        # muted em-dash placeholder used for still-open records.
+        assert '—' not in body['html']
+
+    def test_scoped_to_the_requested_employee_only(self):
+        from attendance.service import AttendanceService
+
+        user = make_user()
+        emp = make_employee(name='Target Employee')
+        other = make_employee(name='Other Employee')
+        client = Client()
+        client.force_login(user)
+
+        since = timezone.now().isoformat()
+        svc = AttendanceService()
+        svc.record_entry(emp.pk)
+        svc.record_entry(other.pk)
+
+        response = client.get(
+            reverse('attendance:list', kwargs={'pk': emp.pk}),
+            {'since': since},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['count'] == 1
+
+    def test_page_renders_with_live_scripts(self):
+        user = make_user()
+        emp = make_employee()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('attendance:list', kwargs={'pk': emp.pk}))
+
+        assert response.status_code == 200
+        assert b'startLivePoll' in response.content
+        assert b'startLiveUpdate' in response.content

@@ -167,6 +167,33 @@ class TruckListView(LoginRequiredMixin, View):
 
         return JsonResponse({'html': html, 'count': len(new_trucks), 'newest': newest})
 
+    def _update_response(self, request, changed_since):
+        """Live-update endpoint: trucks whose active status or assigned
+        driver changed (Truck.updated_at is touched explicitly by
+        AssignDriverView/UnassignDriverView, since the driver itself lives
+        on a separate TruckAssignment row). No active/inactive filter on
+        this list, so nothing is ever flagged for removal."""
+        since_dt = parse_datetime(changed_since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            changed_trucks = []
+        else:
+            changed_trucks = list(
+                self._base_queryset().filter(updated_at__gt=since_dt).order_by('-updated_at')[:self.LIVE_POLL_LIMIT]
+            )
+
+        trucks_with_driver = []
+        for truck in changed_trucks:
+            truck.cover_photo_url = get_cover_photo_url(truck)
+            trucks_with_driver.append((truck, get_current_driver_prefetched(truck)))
+
+        html = render_to_string('trucks/_rows.html', {'trucks_with_driver': trucks_with_driver}, request=request)
+        newest = changed_trucks[0].updated_at.isoformat() if changed_trucks else changed_since
+
+        return JsonResponse({'html': html, 'count': len(changed_trucks), 'newest': newest, 'removed_ids': []})
+
     def get(self, request):
         from django.core.paginator import Paginator
         query = request.GET.get('q', '').strip()
@@ -174,6 +201,9 @@ class TruckListView(LoginRequiredMixin, View):
         since = request.GET.get('since')
         if is_ajax_request(request) and since:
             return self._poll_response(request, since)
+        changed_since = request.GET.get('changed_since')
+        if is_ajax_request(request) and changed_since:
+            return self._update_response(request, changed_since)
 
         trucks_qs = self._base_queryset()
         if query:
@@ -299,6 +329,10 @@ class AssignDriverView(EditRequiredMixin, View):
             assignment.assigned_at = timezone.now()
             try:
                 assignment.save()
+                # TruckAssignment is a separate row/model -- Truck.updated_at
+                # (what the live-update poll watches) doesn't move on its
+                # own just because a related assignment changed.
+                truck.save(update_fields=['updated_at'])
                 messages.success(request, f'Motorista {assignment.driver.name} associado ao caminhão {truck.license_plate}.')
             except ValidationError as exc:
                 messages.error(request, ' '.join(exc.messages))
@@ -318,6 +352,7 @@ class UnassignDriverView(EditRequiredMixin, View):
             messages.error(request, 'Este caminhão não possui motorista ativo.')
         else:
             TruckAssignment.objects.filter(pk=assignment.pk).update(unassigned_at=timezone.now())
+            truck.save(update_fields=['updated_at'])
             messages.success(request, f'Motorista {assignment.driver.name} desassociado do caminhão {truck.license_plate}.')
         return redirect('trucks:detail', pk=pk)
 

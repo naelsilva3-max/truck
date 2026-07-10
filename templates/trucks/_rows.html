@@ -1,6 +1,6 @@
 {% load static %}
 {% for truck, driver in trucks_with_driver %}
-<tr data-timestamp="{{ truck.created_at|date:'c' }}">
+<tr data-row-id="{{ truck.pk }}" data-timestamp="{{ truck.created_at|date:'c' }}" data-updated-timestamp="{{ truck.updated_at|date:'c' }}">
   <td class="photo-cell">
     {% if truck.cover_photo_url %}
       <img src="{{ truck.cover_photo_url }}" alt="{{ truck.license_plate }}" class="photo-thumb photo-thumb--list">

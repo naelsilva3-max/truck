@@ -39,6 +39,11 @@ class UserProfile(models.Model):
         verbose_name='Email verificado',
         help_text='Indica se o usuário confirmou o email recebido no cadastro.',
     )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='Atualizado em',
+        help_text='Data e hora da última atualização deste perfil (inclui alterações de role e do User relacionado, como ativar/desativar).',
+    )
 
     class Meta:
         ordering = ['user__username']

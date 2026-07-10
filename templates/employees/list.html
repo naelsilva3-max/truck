@@ -66,6 +66,10 @@
       tbodyId: 'infinite-tbody',
       url: '{% url "employees:list" %}?{% if show_inactive %}show_inactive=1&{% endif %}{% if query %}q={{ query|urlencode }}{% endif %}'
     });
+    window.startLiveUpdate({
+      tbodyId: 'infinite-tbody',
+      url: '{% url "employees:list" %}?{% if show_inactive %}show_inactive=1&{% endif %}{% if query %}q={{ query|urlencode }}{% endif %}'
+    });
     </script>
   </div>
 

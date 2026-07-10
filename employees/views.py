@@ -100,11 +100,48 @@ class EmployeeListView(LoginRequiredMixin, ListView):
 
         return JsonResponse({'html': html, 'count': len(new_employees), 'newest': newest})
 
+    def _update_response(self, changed_since):
+        """
+        Live-update endpoint: employees whose row changed (e.g. active
+        status toggled) after `changed_since`. Deliberately checks ALL
+        employees matching the search query, ignoring the active/inactive
+        filter — an employee that just got deactivated must still be found
+        so it can be flagged for removal from an "active only" view,
+        rather than silently left stale in the DOM.
+        """
+        since_dt = parse_datetime(changed_since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            return JsonResponse({'html': '', 'count': 0, 'newest': changed_since, 'removed_ids': []})
+
+        candidates = Employee.objects.filter(updated_at__gt=since_dt)
+        query = self.request.GET.get('q', '').strip()
+        if query:
+            search_filter = Q()
+            for field in self.SEARCH_FIELDS:
+                search_filter |= Q(**{f'{field}__icontains': query})
+            candidates = candidates.filter(search_filter)
+        candidates = list(candidates.order_by('-updated_at')[:self.LIVE_POLL_LIMIT])
+
+        show_inactive = self.request.GET.get('show_inactive') == '1'
+        visible = [e for e in candidates if show_inactive or e.is_active]
+        removed_ids = [e.pk for e in candidates if not (show_inactive or e.is_active)]
+
+        html = render_to_string('employees/_rows.html', {'employees': visible}, request=self.request)
+        newest = candidates[0].updated_at.isoformat() if candidates else changed_since
+
+        return JsonResponse({'html': html, 'count': len(visible), 'newest': newest, 'removed_ids': removed_ids})
+
     def render_to_response(self, context, **response_kwargs):
         if is_ajax_request(self.request):
             since = self.request.GET.get('since')
             if since:
                 return self._poll_response(since)
+            changed_since = self.request.GET.get('changed_since')
+            if changed_since:
+                return self._update_response(changed_since)
             return infinite_scroll_json(self.request, 'employees/_rows.html', context, context['page_obj'])
         return super().render_to_response(context, **response_kwargs)
 

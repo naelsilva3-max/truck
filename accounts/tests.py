@@ -194,3 +194,90 @@ class TestUserManageLivePoll:
 
         assert response.status_code == 200
         assert b'startLivePoll' in response.content
+
+
+@pytest.mark.django_db
+class TestUserManageLiveUpdate:
+    def test_toggle_active_bumps_profile_updated_at_and_is_picked_up(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        master = make_master_user()
+        target = make_user(username='togglee', email='t@example.com')
+
+        now = timezone.now()
+        from accounts.models import UserProfile
+        UserProfile.objects.filter(pk=master.profile.pk).update(updated_at=now - timedelta(minutes=10))
+        UserProfile.objects.filter(pk=target.profile.pk).update(updated_at=now - timedelta(minutes=10))
+
+        client = Client()
+        client.force_login(master)
+
+        toggle_resp = client.post(reverse('accounts:toggle_user', kwargs={'pk': target.pk}))
+        assert toggle_resp.status_code == 302
+        target.refresh_from_db()
+        assert target.is_active is False
+
+        response = client.get(
+            reverse('accounts:manage_users'),
+            {'changed_since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['count'] == 1
+        assert 'togglee' in body['html']
+        assert 'Inativo' in body['html']
+        assert body['removed_ids'] == []
+
+    def test_role_change_is_picked_up(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from accounts.models import UserProfile
+
+        master = make_master_user()
+        target = make_user(username='promotee', email='p@example.com')
+
+        now = timezone.now()
+        UserProfile.objects.filter(pk=master.profile.pk).update(updated_at=now - timedelta(minutes=10))
+        UserProfile.objects.filter(pk=target.profile.pk).update(updated_at=now - timedelta(minutes=10))
+
+        client = Client()
+        client.force_login(master)
+
+        role_resp = client.post(reverse('accounts:change_role', kwargs={'pk': target.pk}), {'role': UserProfile.ADMIN})
+        assert role_resp.status_code == 302
+
+        response = client.get(
+            reverse('accounts:manage_users'),
+            {'changed_since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['count'] == 1
+        assert 'promotee' in body['html']
+
+    def test_requires_master_role(self):
+        from django.utils import timezone
+
+        user = make_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('accounts:manage_users'), {'changed_since': timezone.now().isoformat()})
+        assert response.status_code == 302
+
+    def test_page_renders_with_startliveupdate(self):
+        master = make_master_user()
+        client = Client()
+        client.force_login(master)
+
+        response = client.get(reverse('accounts:manage_users'))
+
+        assert response.status_code == 200
+        assert b'startLiveUpdate' in response.content

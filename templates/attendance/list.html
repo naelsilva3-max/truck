@@ -31,7 +31,6 @@
   </form>
 </div>
 
-{% if records %}
 <div class="table-responsive">
   <table class="table">
     <thead>
@@ -41,26 +40,25 @@
         <th>Saída</th>
       </tr>
     </thead>
-    <tbody>
-      {% for record in records %}
-      <tr>
-        <td>{{ record.date }}</td>
-        <td>{{ record.entry_time|date:"d/m/Y H:i" }}</td>
-        <td>
-          {% if record.exit_time %}
-            {{ record.exit_time|date:"d/m/Y H:i" }}
-          {% else %}
-            <span class="text-muted">—</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
+    <tbody id="infinite-tbody">
+      {% include 'attendance/_record_rows.html' %}
     </tbody>
   </table>
 </div>
-{% else %}
+{% if not records %}
 <div class="card text-center">
   <p class="text-muted">Nenhum registro de ponto encontrado{% if start_date or end_date %} para o período informado{% endif %}.</p>
 </div>
 {% endif %}
+
+<script>
+window.startLivePoll({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "attendance:list" employee.pk %}?{% if start_date %}start_date={{ start_date|date:"Y-m-d" }}&{% endif %}{% if end_date %}end_date={{ end_date|date:"Y-m-d" }}{% endif %}'
+});
+window.startLiveUpdate({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "attendance:list" employee.pk %}?{% if start_date %}start_date={{ start_date|date:"Y-m-d" }}&{% endif %}{% if end_date %}end_date={{ end_date|date:"Y-m-d" }}{% endif %}'
+});
+</script>
 {% endblock %}

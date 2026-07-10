@@ -126,6 +126,93 @@ class TestEmployeeListLivePoll:
 
 
 @pytest.mark.django_db
+class TestEmployeeListLiveUpdate:
+    def test_changed_since_returns_updated_employee(self):
+        user = make_user()
+        emp = make_employee(name='Status Flipper')
+        now = timezone.now()
+        Employee.objects.filter(pk=emp.pk).update(updated_at=now - timedelta(minutes=10))
+
+        emp.role = 'Novo Cargo'
+        emp.save()  # bumps updated_at via auto_now
+
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:list'),
+            {'changed_since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['count'] == 1
+        assert 'Novo Cargo' in body['html']
+        assert body['removed_ids'] == []
+
+    def test_deactivated_employee_is_flagged_for_removal_from_active_view(self):
+        """Viewing the default (active-only) list: an employee that gets
+        deactivated must be flagged in removed_ids, not silently left with
+        a stale "Ativo" badge (or rendered at all, since it no longer
+        belongs in this filtered view)."""
+        user = make_user()
+        emp = make_employee(name='Soon Inactive', is_active=True)
+        now = timezone.now()
+        Employee.objects.filter(pk=emp.pk).update(updated_at=now - timedelta(minutes=10))
+
+        emp.is_active = False
+        emp.save()
+
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:list'),
+            {'changed_since': (now - timedelta(minutes=1)).isoformat()},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['count'] == 0
+        assert body['removed_ids'] == [emp.pk]
+        assert 'Soon Inactive' not in body['html']
+
+    def test_deactivated_employee_still_shown_when_viewing_all(self):
+        user = make_user()
+        emp = make_employee(name='Shown Inactive', is_active=True)
+        now = timezone.now()
+        Employee.objects.filter(pk=emp.pk).update(updated_at=now - timedelta(minutes=10))
+
+        emp.is_active = False
+        emp.save()
+
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:list'),
+            {'changed_since': (now - timedelta(minutes=1)).isoformat(), 'show_inactive': '1'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        body = response.json()
+        assert body['count'] == 1
+        assert body['removed_ids'] == []
+        assert 'Shown Inactive' in body['html']
+
+    def test_page_renders_with_startliveupdate(self):
+        user = make_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('employees:list'))
+
+        assert response.status_code == 200
+        assert b'startLiveUpdate' in response.content
+
+
+@pytest.mark.django_db
 class TestEmployeeListHistoryWidget:
     def test_shows_at_most_15_events(self):
         user = make_user()

@@ -176,10 +176,40 @@ class UserManageView(MasterRequiredMixin, View):
 
         return JsonResponse({'html': html, 'count': len(new_users), 'newest': newest})
 
+    def _update_response(self, request, changed_since):
+        """Live-update endpoint: users whose active status or role changed
+        (tracked via UserProfile.updated_at — see UserToggleActiveView and
+        UserChangeRoleView). No filter on this list to worry about (every
+        user is always shown), so nothing is ever flagged for removal."""
+        since_dt = parse_datetime(changed_since)
+        if since_dt is not None and timezone.is_naive(since_dt):
+            since_dt = timezone.make_aware(since_dt)
+
+        if since_dt is None:
+            changed_users = []
+        else:
+            changed_users = list(
+                User.objects.select_related('profile')
+                .filter(profile__updated_at__gt=since_dt)
+                .order_by('-profile__updated_at')[:self.LIVE_POLL_LIMIT]
+            )
+
+        html = render_to_string(
+            'accounts/_user_rows.html',
+            {'users': changed_users, 'role_choices': UserProfile.ROLE_CHOICES},
+            request=request,
+        )
+        newest = changed_users[0].profile.updated_at.isoformat() if changed_users else changed_since
+
+        return JsonResponse({'html': html, 'count': len(changed_users), 'newest': newest, 'removed_ids': []})
+
     def get(self, request):
         since = request.GET.get('since')
         if is_ajax_request(request) and since:
             return self._poll_response(request, since)
+        changed_since = request.GET.get('changed_since')
+        if is_ajax_request(request) and changed_since:
+            return self._update_response(request, changed_since)
 
         users = User.objects.select_related('profile').order_by('username')
         return render(request, self.template_name, {'users': users, 'role_choices': UserProfile.ROLE_CHOICES})
@@ -193,6 +223,10 @@ class UserToggleActiveView(MasterRequiredMixin, View):
             return redirect('accounts:manage_users')
         target.is_active = not target.is_active
         target.save()
+        # User has no updated_at of its own; touch the profile (1:1, no
+        # field actually changes) so its auto_now updated_at reflects this
+        # change too -- that's what the live-update poll watches.
+        target.profile.save(update_fields=['updated_at'])
         state = 'reativado' if target.is_active else 'desativado (não conseguirá mais fazer login)'
         log_action(request, SystemLog.ACTION_UPDATE, f'Usuário {target.username} {"ativado" if target.is_active else "desativado"}')
         messages.success(request, f'Usuário "{target.username}" {state}.')

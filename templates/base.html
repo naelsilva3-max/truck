@@ -95,6 +95,82 @@
       if (!document.hidden) tick();
     });
   };
+
+  // Unlike startLivePoll (which only ever INSERTS new rows), this REPLACES
+  // existing rows in place when their server-side state changes (e.g. a
+  // status badge flips, a role changes). Rows must carry both
+  // data-row-id (a stable identifier used to find the existing <tr> to
+  // replace) and data-updated-timestamp (this mechanism's own cursor --
+  // kept separate from data-timestamp, startLivePoll's cursor, since a
+  // page can run both at once on the same tbody).
+  window.startLiveUpdate = function (opts) {
+    var tbody = document.getElementById(opts.tbodyId);
+    if (!tbody) return;
+
+    var errorAnchor = tbody.closest('table') || tbody;
+    var intervalMs = opts.intervalMs || 5000;
+
+    var since = (function () {
+      var rows = tbody.querySelectorAll('tr[data-updated-timestamp]');
+      var newest = null;
+      for (var i = 0; i < rows.length; i++) {
+        var ts = rows[i].getAttribute('data-updated-timestamp');
+        if (newest === null || new Date(ts) > new Date(newest)) newest = ts;
+      }
+      return newest || new Date().toISOString();
+    })();
+    var polling = false;
+    var consecutiveFailures = 0;
+
+    function tick() {
+      if (polling || document.hidden) return;
+      polling = true;
+      var url = opts.url + (opts.url.indexOf('?') === -1 ? '?' : '&') + 'changed_since=' + encodeURIComponent(since);
+      fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.count > 0) {
+            var temp = document.createElement('tbody');
+            temp.innerHTML = data.html;
+            Array.prototype.forEach.call(temp.querySelectorAll('tr[data-row-id]'), function (newRow) {
+              var rowId = newRow.getAttribute('data-row-id');
+              var existing = tbody.querySelector('tr[data-row-id="' + rowId + '"]');
+              if (existing) {
+                existing.replaceWith(newRow);
+              } else {
+                tbody.appendChild(newRow);
+              }
+            });
+            since = data.newest;
+          }
+          // A row can change in a way that makes it no longer belong in
+          // THIS particular view (e.g. an employee gets deactivated while
+          // someone is looking at the "active only" list) -- the server
+          // flags those by id instead of trying to render them.
+          if (data.removed_ids && data.removed_ids.length) {
+            data.removed_ids.forEach(function (rowId) {
+              var existing = tbody.querySelector('tr[data-row-id="' + rowId + '"]');
+              if (existing) existing.remove();
+            });
+          }
+          polling = false;
+          consecutiveFailures = 0;
+          if (window.hideFetchError) window.hideFetchError(errorAnchor);
+        })
+        .catch(function () {
+          polling = false;
+          consecutiveFailures++;
+          if (consecutiveFailures >= 2 && window.showFetchError) {
+            window.showFetchError(errorAnchor, 'Atualização automática indisponível no momento (verifique sua conexão).');
+          }
+        });
+    }
+
+    setInterval(tick, intervalMs);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) tick();
+    });
+  };
   </script>
 
   <nav class="navbar">

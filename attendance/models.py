@@ -32,6 +32,11 @@ class AttendanceRecord(models.Model):
         verbose_name='Criado em',
         help_text='Data e hora de criação do registro.',
     )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='Atualizado em',
+        help_text='Data e hora da última atualização (ex.: quando a saída é registrada num registro em aberto).',
+    )
 
     class Meta:
         ordering = ['-entry_time']

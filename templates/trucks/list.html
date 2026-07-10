@@ -49,5 +49,9 @@ window.startLivePoll({
   tbodyId: 'infinite-tbody',
   url: '{% url "trucks:list" %}{% if query %}?q={{ query|urlencode }}{% endif %}'
 });
+window.startLiveUpdate({
+  tbodyId: 'infinite-tbody',
+  url: '{% url "trucks:list" %}{% if query %}?q={{ query|urlencode }}{% endif %}'
+});
 </script>
 {% endblock %}
