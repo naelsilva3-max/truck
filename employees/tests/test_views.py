@@ -194,6 +194,57 @@ class TestEmployeeEnrollViewRemoteQueue:
 
 
 @pytest.mark.django_db
+class TestEmployeeEnrollViewBlocksReenroll:
+    """
+    Re-enrolling in place no longer exists: an employee with a template
+    already must have it deleted (EmployeeDeleteBiometricView) before a new
+    one can be captured.
+    """
+
+    def test_get_redirects_to_edit_page_when_already_enrolled(self):
+        user = make_admin_user()
+        emp = make_employee()
+        BiometricTemplate.objects.create(employee=emp, template=b'x' * 64)
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('employees:enroll', kwargs={'pk': emp.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse('employees:update', kwargs={'pk': emp.pk})
+
+    def test_post_redirects_to_edit_page_when_already_enrolled(self):
+        user = make_admin_user()
+        emp = make_employee()
+        BiometricTemplate.objects.create(employee=emp, template=b'x' * 64)
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(reverse('employees:enroll', kwargs={'pk': emp.pk}))
+
+        assert response.status_code == 302
+        assert response.url == reverse('employees:update', kwargs={'pk': emp.pk})
+        # Original template untouched — no capture was attempted.
+        assert bytes(BiometricTemplate.objects.get(employee=emp).template) == b'x' * 64
+
+    def test_ajax_get_reports_has_biometric_without_waiting_state(self):
+        user = make_admin_user()
+        emp = make_employee()
+        BiometricTemplate.objects.create(employee=emp, template=b'x' * 64)
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('employees:enroll', kwargs={'pk': emp.pk}), HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['has_biometric'] is True
+        assert body['waiting'] is False
+
+
+@pytest.mark.django_db
 class TestEmployeeDeleteBiometricView:
     def test_deletes_existing_template_and_redirects_to_edit(self):
         user = make_admin_user()

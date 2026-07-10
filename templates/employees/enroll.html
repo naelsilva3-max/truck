@@ -21,18 +21,14 @@
     <div class="detail-item">
       <dt>Status Biométrico</dt>
       <dd>
-        {% if has_biometric %}
-          <span class="badge badge--success">Biometria já cadastrada</span>
-        {% else %}
-          <span class="badge badge--warning">Sem biometria cadastrada</span>
-        {% endif %}
+        <span class="badge badge--warning">Sem biometria cadastrada</span>
       </dd>
     </div>
   </dl>
 </div>
 
 <div class="section-card">
-  <h2>{% if has_biometric %}Recadastrar Biometria{% else %}Cadastrar Biometria{% endif %}</h2>
+  <h2>Cadastrar Biometria</h2>
 
   <div class="enroll-instructions">
     <h3>Instruções</h3>
@@ -43,11 +39,6 @@
       <li>Serão feitas <strong>3 leituras</strong> do mesmo dedo: quando o leitor capturar, <strong>levante o dedo e reposicione-o</strong>. Repita até concluir as 3 leituras.</li>
     </ol>
     <p class="text-muted"><small>As 3 leituras são combinadas em um único template, o que torna o reconhecimento mais confiável.</small></p>
-    {% if has_biometric %}
-      <div class="alert alert--warning">
-        <strong>Atenção:</strong> O template biométrico atual será substituído pelo novo após a captura bem-sucedida.
-      </div>
-    {% endif %}
   </div>
 
   {% if pending_request %}

@@ -190,6 +190,15 @@ class EmployeeEnrollView(EditRequiredMixin, View):
     def get(self, request, pk: int):
         employee = get_object_or_404(Employee, pk=pk)
         has_biometric = hasattr(employee, 'biometric') # Check if related object exists
+        if has_biometric:
+            # Re-enrolling in place (overwriting an existing template) proved
+            # less reliable end-to-end than a clean delete-then-enroll, so
+            # that path no longer exists — send the admin to the "Apagar
+            # Biometria" button on the edit page instead.
+            if is_ajax_request(request):
+                return JsonResponse({'waiting': False, 'has_biometric': True, 'request_id': None})
+            messages.info(request, 'Este funcionário já tem biometria cadastrada. Apague a atual antes de cadastrar uma nova.')
+            return redirect('employees:update', pk=employee.pk)
         pending_request = (
             BiometricEnrollRequest.objects
             .filter(employee=employee, status=BiometricEnrollRequest.PENDING)
@@ -211,6 +220,10 @@ class EmployeeEnrollView(EditRequiredMixin, View):
 
         if request.POST.get('action') == 'cancel':
             return self._cancel_pending(request, employee)
+
+        if hasattr(employee, 'biometric'):
+            messages.info(request, 'Este funcionário já tem biometria cadastrada. Apague a atual antes de cadastrar uma nova.')
+            return redirect('employees:update', pk=employee.pk)
 
         service = self._get_biometric_service()
 

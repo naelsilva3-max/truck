@@ -109,7 +109,7 @@
         Atualizado em: {{ biometric_info.updated_at|date:"d/m/Y H:i" }}
       </p>
     </div>
-    <a href="{% url 'employees:enroll' employee.pk %}" class="btn btn--secondary">Recadastrar Biometria</a>
+    <a href="{% url 'employees:update' employee.pk %}" class="btn btn--secondary">Gerenciar Biometria</a>
   {% else %}
     <div class="biometric-status biometric-status--missing">
       <span class="badge badge--warning">Sem biometria cadastrada</span>
