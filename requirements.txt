@@ -2,7 +2,7 @@ asgiref==3.11.1
 certifi==2026.5.20
 charset-normalizer==3.4.7
 colorama==0.4.6
-Django==6.0.3
+Django==6.0.7
 django-db-connection-pool==1.2.6
 django-optimized-image==0.3.0
 gunicorn==23.0.0
