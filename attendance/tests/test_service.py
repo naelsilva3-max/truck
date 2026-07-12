@@ -145,3 +145,70 @@ class TestAttendanceServiceScanCooldown:
 
         rec = svc.toggle_for_employee(emp2.pk)  # should not raise
         assert rec.employee_id == emp2.pk
+
+
+@pytest.mark.django_db
+class TestAttendanceServiceStaleAutoClose:
+    """
+    An employee who forgets to scan out must not have their *next day's*
+    arrival scan misread as the previous day's exit — the stale open record
+    should be auto-closed (flagged, exit_time left for manual review) and
+    the new scan should start a fresh entry instead.
+    """
+
+    def _backdate_open_record_and_event(self, emp, svc, delta):
+        open_rec = svc.get_open_record(emp.pk)
+        stale_time = open_rec.entry_time - delta
+        AttendanceRecord.objects.filter(pk=open_rec.pk).update(entry_time=stale_time)
+        PresenceEvent.objects.filter(attendance_record=open_rec).update(timestamp=stale_time)
+        return open_rec
+
+    def test_auto_close_if_stale_flags_record_past_max_open_duration(self):
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)
+        self._backdate_open_record_and_event(
+            emp, svc, AttendanceService.MAX_OPEN_DURATION + timedelta(seconds=1)
+        )
+
+        closed = svc.auto_close_if_stale(emp.pk)
+        assert closed is not None
+        assert closed.auto_closed is True
+        assert closed.exit_time is None
+
+    def test_auto_close_if_stale_does_not_flag_record_within_max_open_duration(self):
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)
+        self._backdate_open_record_and_event(
+            emp, svc, AttendanceService.MAX_OPEN_DURATION - timedelta(minutes=1)
+        )
+
+        assert svc.auto_close_if_stale(emp.pk) is None
+
+    def test_stale_open_record_no_longer_counts_as_open(self):
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)
+        self._backdate_open_record_and_event(
+            emp, svc, AttendanceService.MAX_OPEN_DURATION + timedelta(seconds=1)
+        )
+        svc.auto_close_if_stale(emp.pk)
+
+        assert svc.get_open_record(emp.pk) is None
+
+    def test_next_scan_after_stale_record_starts_new_entry_not_exit(self):
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)  # forgotten entry, never checked out
+        self._backdate_open_record_and_event(
+            emp, svc, AttendanceService.MAX_OPEN_DURATION + timedelta(seconds=1)
+        )
+
+        # Next day's arrival scan
+        new_record = svc.toggle_for_employee(emp.pk)
+
+        assert new_record.exit_time is None  # a fresh entry, not the stale exit
+        stale_record = AttendanceRecord.objects.exclude(pk=new_record.pk).get(employee=emp)
+        assert stale_record.auto_closed is True
+        assert stale_record.exit_time is None

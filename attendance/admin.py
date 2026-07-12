@@ -5,8 +5,8 @@ from .models import AttendanceRecord
 
 @admin.register(AttendanceRecord)
 class AttendanceRecordAdmin(admin.ModelAdmin):
-    list_display = ('employee', 'date', 'entry_time', 'exit_time')
-    list_filter = ('date', 'employee')
+    list_display = ('employee', 'date', 'entry_time', 'exit_time', 'auto_closed')
+    list_filter = ('date', 'employee', 'auto_closed')
     search_fields = ('employee__name',)
     readonly_fields = ('created_at', 'date')
     ordering = ('-entry_time',)

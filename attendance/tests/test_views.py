@@ -6,12 +6,19 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from attendance.models import PresenceEvent
+from attendance.models import AttendanceRecord, PresenceEvent
+from attendance.service import AttendanceService
 from employees.models import Employee
 
 
 def make_user():
     return User.objects.create_user(username='plain', password='pass')
+
+
+def make_admin_user():
+    # AttendancePendingReviewView requires role admin/master (EditRequiredMixin);
+    # is_superuser maps to role 'master' (accounts.mixins.get_role).
+    return User.objects.create_user(username='boss', password='pass', is_superuser=True)
 
 
 def make_employee(**kw):
@@ -306,3 +313,83 @@ class TestAttendanceCalendarLiveUpdate:
         # The shared function definition is always present (base.html);
         # only the per-page CALL is conditional on an employee being picked.
         assert b'startCalendarLiveUpdate({' not in response.content
+
+
+@pytest.mark.django_db
+class TestAttendancePendingReviewView:
+    def _make_stale_record(self, emp):
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)
+        open_rec = svc.get_open_record(emp.pk)
+        stale_time = open_rec.entry_time - AttendanceService.MAX_OPEN_DURATION - timedelta(seconds=1)
+        AttendanceRecord.objects.filter(pk=open_rec.pk).update(entry_time=stale_time)
+        PresenceEvent.objects.filter(attendance_record=open_rec).update(timestamp=stale_time)
+        svc.auto_close_if_stale(emp.pk)
+        return AttendanceRecord.objects.get(pk=open_rec.pk)
+
+    def test_requires_login(self):
+        client = Client()
+        response = client.get(reverse('attendance:pending_review'))
+        assert response.status_code == 302
+
+    def test_plain_user_is_denied(self):
+        user = make_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('attendance:pending_review'))
+
+        assert response.status_code == 302
+
+    def test_lists_only_auto_closed_open_records(self):
+        admin = make_admin_user()
+        emp = make_employee(name='Esquecido')
+        other_emp = make_employee(name='Em Dia')
+        self._make_stale_record(emp)
+        AttendanceService().record_entry(other_emp.pk)  # normal open record
+
+        client = Client()
+        client.force_login(admin)
+        response = client.get(reverse('attendance:pending_review'))
+
+        assert response.status_code == 200
+        assert 'Esquecido'.encode() in response.content
+        assert 'Em Dia'.encode() not in response.content
+
+    def test_post_sets_exit_time_and_removes_from_pending_list(self):
+        admin = make_admin_user()
+        emp = make_employee()
+        stale = self._make_stale_record(emp)
+
+        client = Client()
+        client.force_login(admin)
+        exit_time = (stale.entry_time + timedelta(hours=8)).strftime('%Y-%m-%dT%H:%M')
+        response = client.post(
+            reverse('attendance:pending_review_fix', kwargs={'pk': stale.pk}),
+            {'exit_time': exit_time},
+        )
+
+        assert response.status_code == 302
+        stale.refresh_from_db()
+        assert stale.exit_time is not None
+        assert stale.auto_closed is True  # kept as audit trail
+
+        response = client.get(reverse('attendance:pending_review'))
+        assert list(response.context['records']) == []
+
+    def test_post_invalid_exit_time_shows_error_and_keeps_record_open(self):
+        admin = make_admin_user()
+        emp = make_employee()
+        stale = self._make_stale_record(emp)
+
+        client = Client()
+        client.force_login(admin)
+        response = client.post(
+            reverse('attendance:pending_review_fix', kwargs={'pk': stale.pk}),
+            {'exit_time': 'not-a-date'},
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        stale.refresh_from_db()
+        assert stale.exit_time is None

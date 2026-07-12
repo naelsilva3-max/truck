@@ -236,6 +236,9 @@
         <a href="{% url 'trucks:list' %}">Caminhões</a>
         <a href="{% url 'visitors:visit_list' %}">Visitas</a>
         <a href="{% url 'reports_index' %}">Relatórios</a>
+        {% if can_edit %}
+          <a href="{% url 'attendance:pending_review' %}">Pontos Pendentes</a>
+        {% endif %}
         <div class="navbar-dropdown" id="systemMenu">
           <button type="button" class="navbar-dropdown-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="systemMenuList" onclick="toggleSystemMenu(this)">
             Sistema <span class="navbar-dropdown-caret">▾</span>

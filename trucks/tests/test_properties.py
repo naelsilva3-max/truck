@@ -202,8 +202,15 @@ def test_attendance_toggle_at_most_one_open(n):
                 )
             svc.process_biometric_event(template_bytes)
 
+    # This test backdates every open record far in the past before the next
+    # toggle, which routinely exceeds AttendanceService.MAX_OPEN_DURATION —
+    # so each toggle auto-closes the previous record (flagged, exit_time
+    # left null for manual review) rather than recording a real exit. The
+    # invariant that still holds is "at most one *actionable* open record"
+    # (exit_time null AND not auto_closed) — auto_closed records pile up
+    # alongside it by design, pending review, and are no longer "open".
     open_count = AttendanceRecord.objects.filter(
-        employee=emp, exit_time__isnull=True
+        employee=emp, exit_time__isnull=True, auto_closed=False
     ).count()
     assert open_count <= 1
 

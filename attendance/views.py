@@ -1,15 +1,20 @@
 import calendar
 from datetime import date, datetime, timedelta
 
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.http import HttpResponseNotAllowed, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views import View
 
+from accounts.logging import log_action
+from accounts.mixins import EditRequiredMixin
+from accounts.models import SystemLog
 from employee_truck_control.http import infinite_scroll_json, is_ajax_request, parse_date_param
 from employees.models import Employee
 from attendance.models import AttendanceRecord, PresenceEvent
@@ -365,3 +370,51 @@ class PresenceHistoryView(LoginRequiredMixin, View):
             'end_date': end_date,
             'filter_type': filter_type,
         })
+
+
+class AttendancePendingReviewView(EditRequiredMixin, View):
+    """
+    Records the system auto-closed because the employee never scanned out
+    within AttendanceService.MAX_OPEN_DURATION (see
+    AttendanceService.auto_close_if_stale). An admin/master fills in the
+    real exit time here; the record drops off this list once exit_time is
+    set (still flagged auto_closed=True as an audit trail of what happened).
+    """
+
+    template_name = 'attendance/pending_review.html'
+
+    def _pending(self):
+        return (
+            AttendanceRecord.objects
+            .filter(auto_closed=True, exit_time__isnull=True)
+            .select_related('employee')
+            .order_by('entry_time')
+        )
+
+    def get(self, request, pk=None):
+        return render(request, self.template_name, {'records': self._pending()})
+
+    def post(self, request, pk):
+        record = get_object_or_404(AttendanceRecord, pk=pk, auto_closed=True, exit_time__isnull=True)
+        exit_time = parse_datetime(request.POST.get('exit_time', ''))
+        if exit_time is not None and timezone.is_naive(exit_time):
+            exit_time = timezone.make_aware(exit_time)
+
+        if exit_time is None:
+            messages.error(request, 'Informe uma data/hora de saída válida.')
+            return redirect('attendance:pending_review')
+
+        record.exit_time = exit_time
+        try:
+            record.save()
+        except ValidationError as e:
+            messages.error(request, ' '.join(e.messages))
+            return redirect('attendance:pending_review')
+
+        log_action(
+            request, SystemLog.ACTION_UPDATE,
+            f'Saída corrigida manualmente para {record.employee.name} '
+            f'(registro de {record.date}, fechado automaticamente por falta de batida de saída).',
+        )
+        messages.success(request, f'Saída de {record.employee.name} registrada com sucesso.')
+        return redirect('attendance:pending_review')

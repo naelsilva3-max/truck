@@ -37,6 +37,17 @@ class AttendanceRecord(models.Model):
         verbose_name='Atualizado em',
         help_text='Data e hora da última atualização (ex.: quando a saída é registrada num registro em aberto).',
     )
+    auto_closed = models.BooleanField(
+        default=False,
+        verbose_name='Fechado automaticamente',
+        help_text=(
+            'Marcado quando o funcionário esqueceu de bater a saída e o '
+            'registro ficou aberto além do turno máximo permitido — deixa '
+            'de contar como "em aberto" para a próxima batida (que passa a '
+            'gerar uma nova entrada) e aparece na tela de revisão até que '
+            'um administrador preencha a saída real.'
+        ),
+    )
 
     class Meta:
         ordering = ['-entry_time']

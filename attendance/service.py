@@ -25,6 +25,14 @@ class AttendanceService:
     # separate attendance events.
     SCAN_COOLDOWN = timedelta(minutes=3)
 
+    # Longest an AttendanceRecord is allowed to stay open before it's treated
+    # as abandoned (employee forgot to scan out) rather than a real ongoing
+    # shift. Covers the longest legitimate shift plus overtime with margin;
+    # once exceeded the record is auto-closed (flagged, not given a guessed
+    # exit_time) so the next scan starts a fresh entry instead of being
+    # misread as that stale record's exit.
+    MAX_OPEN_DURATION = timedelta(hours=16)
+
     def __init__(self, biometric_service: '_BiometricServiceType | None' = None) -> None:
         self._biometric_service = biometric_service
 
@@ -37,9 +45,35 @@ class AttendanceService:
     def get_open_record(self, employee_id: int) -> AttendanceRecord | None:
         return (
             AttendanceRecord.objects
-            .filter(employee_id=employee_id, exit_time__isnull=True)
+            .filter(employee_id=employee_id, exit_time__isnull=True, auto_closed=False)
             .first()
         )
+
+    def auto_close_if_stale(self, employee_id: int) -> AttendanceRecord | None:
+        """
+        If this employee's open record has been open longer than
+        MAX_OPEN_DURATION, flag it as auto_closed instead of leaving it to
+        be matched as an "exit" by whatever scan comes next (which could be
+        a day later, and would record that day's arrival as the previous
+        day's departure). Does not guess exit_time — the record stays
+        exit_time=None for an admin to fill in on the review screen.
+        """
+        record = (
+            AttendanceRecord.objects
+            .filter(employee_id=employee_id, exit_time__isnull=True, auto_closed=False)
+            .first()
+        )
+        if record is None:
+            return None
+        if timezone.now() - record.entry_time <= self.MAX_OPEN_DURATION:
+            return None
+        record.auto_closed = True
+        record.save()
+        logger.warning(
+            "Attendance record %s for employee %s auto-closed as stale (open since %s).",
+            record.pk, employee_id, record.entry_time,
+        )
+        return record
 
     def get_current_status(self, employee_id: int) -> tuple[str, object | None]:
         """Return (direction, timestamp) of the last PresenceEvent, or ('OUT', None)."""
@@ -104,7 +138,10 @@ class AttendanceService:
     def toggle_for_employee(self, employee_id: int) -> AttendanceRecord:
         """
         Toggle IN/OUT for an already-identified employee: records an entry if
-        there's no open record, otherwise closes it with an exit.
+        there's no open record, otherwise closes it with an exit. A record
+        left open past MAX_OPEN_DURATION (see auto_close_if_stale) is flagged
+        and ignored here, so this scan starts a new entry instead of being
+        read as that stale record's exit.
 
         Propagates Employee.DoesNotExist and ValueError (inactive employee)
         raised by record_entry/record_exit's _check_active, and
@@ -113,6 +150,7 @@ class AttendanceService:
         """
         self._check_active(employee_id)
         self._check_cooldown(employee_id)
+        self.auto_close_if_stale(employee_id)
         open_record = self.get_open_record(employee_id)
         if open_record is None:
             return self.record_entry(employee_id)
