@@ -13,7 +13,7 @@ from django.utils.dateparse import parse_datetime
 from django.views import View
 
 from accounts.logging import log_action
-from accounts.mixins import EditRequiredMixin
+from accounts.mixins import MasterRequiredMixin
 from accounts.models import SystemLog
 from employee_truck_control.http import infinite_scroll_json, is_ajax_request, parse_date_param
 from employees.models import Employee
@@ -372,13 +372,13 @@ class PresenceHistoryView(LoginRequiredMixin, View):
         })
 
 
-class AttendancePendingReviewView(EditRequiredMixin, View):
+class AttendancePendingReviewView(MasterRequiredMixin, View):
     """
     Records the system auto-closed because the employee never scanned out
     within AttendanceService.MAX_OPEN_DURATION (see
-    AttendanceService.auto_close_if_stale). An admin/master fills in the
-    real exit time here; the record drops off this list once exit_time is
-    set (still flagged auto_closed=True as an audit trail of what happened).
+    AttendanceService.auto_close_if_stale). Master-only: fills in the real
+    exit time here; the record drops off this list once exit_time is set
+    (still flagged auto_closed=True as an audit trail of what happened).
     """
 
     template_name = 'attendance/pending_review.html'

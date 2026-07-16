@@ -15,10 +15,19 @@ def make_user():
     return User.objects.create_user(username='plain', password='pass')
 
 
-def make_admin_user():
-    # AttendancePendingReviewView requires role admin/master (EditRequiredMixin);
+def make_master_user():
+    # AttendancePendingReviewView requires role master (MasterRequiredMixin);
     # is_superuser maps to role 'master' (accounts.mixins.get_role).
     return User.objects.create_user(username='boss', password='pass', is_superuser=True)
+
+
+def make_admin_role_user():
+    # A regular 'admin' role (not master) — must be denied access to the
+    # pending-review screen, which is master-only.
+    user = User.objects.create_user(username='admin_role', password='pass')
+    user.profile.role = 'admin'
+    user.profile.save()
+    return user
 
 
 def make_employee(**kw):
@@ -341,8 +350,18 @@ class TestAttendancePendingReviewView:
 
         assert response.status_code == 302
 
+    def test_admin_role_is_denied(self):
+        """Only master, not admin, may access the pending-review screen."""
+        user = make_admin_role_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('attendance:pending_review'))
+
+        assert response.status_code == 302
+
     def test_lists_only_auto_closed_open_records(self):
-        admin = make_admin_user()
+        admin = make_master_user()
         emp = make_employee(name='Esquecido')
         other_emp = make_employee(name='Em Dia')
         self._make_stale_record(emp)
@@ -357,7 +376,7 @@ class TestAttendancePendingReviewView:
         assert 'Em Dia'.encode() not in response.content
 
     def test_post_sets_exit_time_and_removes_from_pending_list(self):
-        admin = make_admin_user()
+        admin = make_master_user()
         emp = make_employee()
         stale = self._make_stale_record(emp)
 
@@ -378,7 +397,7 @@ class TestAttendancePendingReviewView:
         assert list(response.context['records']) == []
 
     def test_post_invalid_exit_time_shows_error_and_keeps_record_open(self):
-        admin = make_admin_user()
+        admin = make_master_user()
         emp = make_employee()
         stale = self._make_stale_record(emp)
 
