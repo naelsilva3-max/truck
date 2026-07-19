@@ -32,7 +32,11 @@ valid_name = st.text(
 
 valid_hire_date = st.dates(min_value=date(1970, 1, 1), max_value=date.today())
 
-valid_role = st.text(min_size=1, max_size=100).filter(lambda s: s.strip())
+valid_role = st.text(
+    alphabet=st.characters(blacklist_categories=("Cs",), blacklist_characters="\x00"),
+    min_size=1,
+    max_size=100,
+).filter(lambda s: s.strip())
 
 valid_plate_mercosul = st.from_regex(r"^[A-Z]{3}[0-9][A-Z][0-9]{2}$", fullmatch=True)
 valid_plate_old = st.from_regex(r"^[A-Z]{3}[0-9]{4}$", fullmatch=True)
@@ -83,6 +87,23 @@ def test_whitespace_name_rejected(name):
     count_before = Employee.objects.count()
     with pytest.raises(ValidationError):
         Employee.objects.create(name=name, role="Op", hire_date=date(2020, 1, 1))
+    assert Employee.objects.count() == count_before
+
+
+@pytest.mark.django_db(transaction=True)
+@given(field=st.sampled_from(["name", "role"]), prefix=st.text(max_size=10), suffix=st.text(max_size=10))
+@settings(max_examples=20, deadline=None)
+def test_null_character_rejected(field, prefix, suffix):
+    # Model CharField has no null-character protection by default (unlike
+    # forms.CharField) -- without an explicit validator this bypasses
+    # full_clean() and crashes at the DB driver with a raw ValueError
+    # instead of a clean ValidationError.
+    from django.core.exceptions import ValidationError
+    count_before = Employee.objects.count()
+    kwargs = dict(name="Test", role="Op", hire_date=date(2020, 1, 1))
+    kwargs[field] = f"{prefix}\x00{suffix}"
+    with pytest.raises(ValidationError):
+        Employee.objects.create(**kwargs)
     assert Employee.objects.count() == count_before
 
 

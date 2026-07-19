@@ -1,9 +1,13 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.core.validators import ProhibitNullCharactersValidator
 from django.utils import timezone
 
 from employee_truck_control.validators import validate_cpf
 from employees.models import Employee
+
+# See employees/models.py for why this is needed on model fields too.
+_no_null_chars = ProhibitNullCharactersValidator()
 
 
 class Visitor(models.Model):
@@ -12,6 +16,7 @@ class Visitor(models.Model):
         max_length=200,
         verbose_name='Nome',
         help_text='Nome completo do visitante.',
+        validators=[_no_null_chars],
     )
     photo = models.ImageField(
         upload_to='visitors/photos/',
@@ -29,21 +34,25 @@ class Visitor(models.Model):
         max_length=20, blank=True,
         verbose_name='Telefone',
         help_text='Número de telefone para contato do visitante.',
+        validators=[_no_null_chars],
     )
     company = models.CharField(
         max_length=200, blank=True,
         verbose_name='Empresa',
         help_text='Empresa à qual o visitante pertence (se aplicável).',
+        validators=[_no_null_chars],
     )
     rg = models.CharField(
         max_length=20, blank=True,
         verbose_name='RG',
         help_text='Número do RG do visitante (obrigatório, exceto para estrangeiros).',
+        validators=[_no_null_chars],
     )
     cpf = models.CharField(
         max_length=14, blank=True,
         verbose_name='CPF',
         help_text='CPF do visitante, no formato 000.000.000-00 (obrigatório, exceto para estrangeiros).',
+        validators=[_no_null_chars],
     )
     is_foreigner = models.BooleanField(
         default=False,
@@ -54,11 +63,13 @@ class Visitor(models.Model):
         max_length=50, blank=True,
         verbose_name='Número do Documento',
         help_text='Número do documento de identificação apresentado pelo visitante estrangeiro.',
+        validators=[_no_null_chars],
     )
     foreign_document_type = models.CharField(
         max_length=100, blank=True,
         verbose_name='Tipo de Documento',
         help_text='Tipo do documento apresentado pelo visitante estrangeiro (ex.: Passaporte, RNE).',
+        validators=[_no_null_chars],
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -143,6 +154,7 @@ class Visit(models.Model):
         blank=True,
         verbose_name='Observações',
         help_text='Observações adicionais sobre a visita.',
+        validators=[_no_null_chars],
     )
     created_at = models.DateTimeField(
         auto_now_add=True,

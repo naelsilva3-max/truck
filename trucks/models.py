@@ -2,6 +2,7 @@ import re
 from datetime import date
 
 from django.core.exceptions import ValidationError
+from django.core.validators import ProhibitNullCharactersValidator
 from django.db import models
 from django.utils import timezone
 
@@ -10,6 +11,9 @@ from employees.models import Employee
 MERCOSUL_RE = re.compile(r'^[A-Z]{3}[0-9][A-Z][0-9]{2}$')
 OLD_PLATE_RE = re.compile(r'^[A-Z]{3}[0-9]{4}$')
 CHASSIS_RE = re.compile(r'^[A-Z0-9]{17}$')
+
+# See employees/models.py for why free-text fields need this explicitly.
+_no_null_chars = ProhibitNullCharactersValidator()
 
 
 class TruckColor(models.TextChoices):
@@ -36,6 +40,7 @@ class TruckBrand(models.Model):
         max_length=100, unique=True,
         verbose_name='Marca',
         help_text='Nome da marca do caminhão (ex.: Volvo, Scania, Mercedes-Benz).',
+        validators=[_no_null_chars],
     )
 
     class Meta:
@@ -62,6 +67,7 @@ class TruckModel(models.Model):
         max_length=100,
         verbose_name='Modelo',
         help_text='Nome do modelo do caminhão (ex.: FH 460, R 440, Actros).',
+        validators=[_no_null_chars],
     )
 
     class Meta:
@@ -134,6 +140,7 @@ class Truck(models.Model):
         blank=True,
         verbose_name='Observação',
         help_text='Observações adicionais sobre o caminhão (opcional).',
+        validators=[_no_null_chars],
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -264,6 +271,7 @@ class TruckAssignment(models.Model):
         blank=True,
         verbose_name='Observações',
         help_text='Observações adicionais sobre a associação.',
+        validators=[_no_null_chars],
     )
 
     class Meta:

@@ -1,8 +1,16 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.core.validators import ProhibitNullCharactersValidator
 from django.utils import timezone
 
 from employee_truck_control.validators import validate_cep, validate_cpf
+
+# Model CharField/TextField have no null-character protection by default
+# (unlike forms.CharField) -- full_clean() alone would otherwise let a NUL
+# byte through and crash at the DB driver with a raw ValueError instead of a
+# clean ValidationError. Applied to every free-text field here so direct-ORM
+# writes (scripts, shell, data imports) are as safe as the web forms already are.
+_no_null_chars = ProhibitNullCharactersValidator()
 
 
 class Employee(models.Model):
@@ -10,31 +18,37 @@ class Employee(models.Model):
         max_length=200,
         verbose_name='Nome',
         help_text='Nome completo do funcionário.',
+        validators=[_no_null_chars],
     )
     role = models.CharField(
         max_length=100,
         verbose_name='Cargo',
         help_text='Cargo ou função do funcionário na empresa.',
+        validators=[_no_null_chars],
     )
     department = models.CharField(
         max_length=100, blank=True,
         verbose_name='Departamento',
         help_text='Departamento ao qual o funcionário está alocado.',
+        validators=[_no_null_chars],
     )
     phone = models.CharField(
         max_length=20, blank=True,
         verbose_name='Telefone',
         help_text='Número de telefone para contato.',
+        validators=[_no_null_chars],
     )
     rg = models.CharField(
         max_length=20, blank=True,
         verbose_name='RG',
         help_text='Número do RG do funcionário (opcional).',
+        validators=[_no_null_chars],
     )
     cpf = models.CharField(
         max_length=14, blank=True,
         verbose_name='CPF',
         help_text='CPF do funcionário, no formato 000.000.000-00 (opcional).',
+        validators=[_no_null_chars],
     )
     is_foreigner = models.BooleanField(
         default=False,
@@ -45,21 +59,25 @@ class Employee(models.Model):
         max_length=50, blank=True,
         verbose_name='Número do Documento',
         help_text='Número do documento de identificação apresentado pelo funcionário estrangeiro.',
+        validators=[_no_null_chars],
     )
     foreign_document_type = models.CharField(
         max_length=100, blank=True,
         verbose_name='Tipo de Documento',
         help_text='Tipo do documento apresentado pelo funcionário estrangeiro (ex.: Passaporte, RNE).',
+        validators=[_no_null_chars],
     )
     address = models.CharField(
         max_length=255, blank=True,
         verbose_name='Endereço',
         help_text='Endereço completo do funcionário (opcional).',
+        validators=[_no_null_chars],
     )
     cep = models.CharField(
         max_length=9, blank=True,
         verbose_name='CEP',
         help_text='CEP do endereço, no formato 00000-000 (opcional).',
+        validators=[_no_null_chars],
     )
     hire_date = models.DateField(
         verbose_name='Data de Admissão',
