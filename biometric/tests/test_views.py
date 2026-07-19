@@ -84,6 +84,46 @@ class TestKioskTokenGenerateView:
         assert response.context['raw_token'] is None
 
 
+@pytest.mark.django_db
+class TestKioskTokenDeleteView:
+    def test_requires_login(self):
+        device, _ = KioskDevice.issue(name="Recepção")
+        client = Client()
+        response = client.post(reverse('biometric:kiosk_token_delete', args=[device.pk]))
+        assert response.status_code in (302, 403)
+
+    def test_non_master_is_redirected_and_device_kept(self):
+        user = make_plain_user()
+        device, _ = KioskDevice.issue(name="Recepção")
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(reverse('biometric:kiosk_token_delete', args=[device.pk]))
+
+        assert response.status_code == 302
+        assert KioskDevice.objects.filter(pk=device.pk).exists()
+
+    def test_post_deletes_device(self):
+        user = make_master_user()
+        device, _ = KioskDevice.issue(name="Recepção")
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(reverse('biometric:kiosk_token_delete', args=[device.pk]))
+
+        assert response.status_code == 302
+        assert not KioskDevice.objects.filter(pk=device.pk).exists()
+
+    def test_post_unknown_pk_returns_404(self):
+        user = make_master_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(reverse('biometric:kiosk_token_delete', args=[999]))
+
+        assert response.status_code == 404
+
+
 def _make_exe(name='ZK9500KioskSetup-1.1.exe', content=b'MZ-fake-exe-bytes'):
     return SimpleUploadedFile(name, content, content_type='application/octet-stream')
 

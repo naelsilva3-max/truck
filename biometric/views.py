@@ -137,6 +137,23 @@ class KioskTokenGenerateView(MasterRequiredMixin, View):
         })
 
 
+class KioskTokenDeleteView(MasterRequiredMixin, View):
+    """
+    Permanently deletes a KioskDevice row (not just a soft revoke). Any
+    kiosk still using this token loses access immediately — biometric
+    enroll/scan requests from that machine start failing until it's
+    reconfigured with a new token.
+    """
+
+    def post(self, request, pk):
+        device = get_object_or_404(KioskDevice, pk=pk)
+        name = device.name
+        device.delete()
+        log_action(request, SystemLog.ACTION_DELETE, f'Token de quiosque apagado: {name}')
+        messages.success(request, f'Token de "{name}" apagado.')
+        return redirect('biometric:kiosk_token')
+
+
 class KioskInstallerListView(MasterRequiredMixin, View):
     """
     Repositório dos instaladores do quiosque (kiosk_installer/build.ps1

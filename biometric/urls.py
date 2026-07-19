@@ -4,6 +4,7 @@ from .views import (
     KioskInstallerDeleteView,
     KioskInstallerDownloadView,
     KioskInstallerListView,
+    KioskTokenDeleteView,
     KioskTokenGenerateView,
 )
 from .api_views import (
@@ -18,6 +19,7 @@ app_name = 'biometric'
 urlpatterns = [
     path('simulator/', BiometricSimulatorView.as_view(), name='simulator'),
     path('kiosk-token/', KioskTokenGenerateView.as_view(), name='kiosk_token'),
+    path('kiosk-token/<int:pk>/delete/', KioskTokenDeleteView.as_view(), name='kiosk_token_delete'),
     path('kiosk-installer/', KioskInstallerListView.as_view(), name='kiosk_installer'),
     path('kiosk-installer/<int:pk>/download/', KioskInstallerDownloadView.as_view(), name='kiosk_installer_download'),
     path('kiosk-installer/<int:pk>/delete/', KioskInstallerDeleteView.as_view(), name='kiosk_installer_delete'),
