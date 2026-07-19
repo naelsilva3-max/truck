@@ -21,7 +21,7 @@ from accounts.logging import log_action
 from accounts.mixins import MasterRequiredMixin
 from accounts.models import SystemLog
 from attendance.models import PresenceEvent
-from attendance.service import AttendanceService
+from attendance.service import AttendanceService, next_action_label, presence_label
 from biometric.models import BiometricTemplate, KioskDevice
 
 
@@ -45,13 +45,16 @@ class BiometricSimulatorView(LoginRequiredMixin, StaffRequiredMixin, View):
         for bt in BiometricTemplate.objects.select_related('employee').all():
             # Only expose a short hash — never the raw template bytes
             code = hashlib.sha256(bytes(bt.template)).hexdigest()[:12].upper()
-            direction, last_ts = AttendanceService().get_current_status(bt.employee_id)
+            direction, is_lunch, last_ts = AttendanceService().get_current_status(bt.employee_id)
             rows.append({
                 'employee': bt.employee,
                 'code': code,
                 'direction': direction,
                 'last_ts': last_ts,
                 'is_in': direction == PresenceEvent.IN,
+                'is_lunch': is_lunch,
+                'status_label': presence_label(direction, is_lunch),
+                'next_action_label': next_action_label(direction, is_lunch),
             })
         rows.sort(key=lambda r: r['employee'].name)
         return rows
@@ -86,7 +89,7 @@ class BiometricSimulatorView(LoginRequiredMixin, StaffRequiredMixin, View):
             biometric_service=BiometricService(backend=UnavailableBackend())
         )
         record = svc.process_biometric_event(bytes(bt.template))
-        direction, last_ts = svc.get_current_status(bt.employee.pk)
+        direction, is_lunch, last_ts = svc.get_current_status(bt.employee.pk)
 
         return render(request, self.template_name, {
             'enrolled': self._enrolled_employees(),
@@ -95,6 +98,8 @@ class BiometricSimulatorView(LoginRequiredMixin, StaffRequiredMixin, View):
                 'direction': direction,
                 'last_ts': last_ts,
                 'is_in': direction == PresenceEvent.IN,
+                'is_lunch': is_lunch,
+                'status_label': presence_label(direction, is_lunch),
                 'record': record,
             },
         })

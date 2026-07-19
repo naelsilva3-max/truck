@@ -3,7 +3,13 @@
   <td><a href="{% url 'employees:detail' event.employee.pk %}">{{ event.employee.name }}</a></td>
   <td>{{ event.timestamp|date:"d/m/Y H:i:s" }}</td>
   <td>
-    {% if event.direction == 'IN' %}
+    {% if event.is_lunch %}
+      {% if event.direction == 'IN' %}
+        <span class="badge badge--warning">Retorno Almoço</span>
+      {% else %}
+        <span class="badge badge--warning">Saída Almoço</span>
+      {% endif %}
+    {% elif event.direction == 'IN' %}
       <span class="badge badge--success">Entrada</span>
     {% else %}
       <span class="badge badge--danger">Saída</span>

@@ -18,6 +18,16 @@ class AttendanceRecord(models.Model):
         verbose_name='Entrada',
         help_text='Data e hora da entrada do funcionário.',
     )
+    lunch_start = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Saída para Almoço',
+        help_text='Data e hora em que o funcionário saiu para o almoço.',
+    )
+    lunch_end = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Retorno do Almoço',
+        help_text='Data e hora em que o funcionário retornou do almoço.',
+    )
     exit_time = models.DateTimeField(
         null=True, blank=True,
         verbose_name='Saída',
@@ -68,14 +78,27 @@ class AttendanceRecord(models.Model):
         )
 
     def clean(self):
-        if self.exit_time is not None and self.entry_time is not None:
-            if self.exit_time < self.entry_time + timedelta(seconds=1):
+        """
+        Validates chronological order across whichever of the four
+        punch-clock timestamps are set — entrada, saída para o almoço,
+        retorno do almoço, saída — skipping any that are absent (e.g. a
+        manually-corrected record may only have entry_time and exit_time,
+        with no lunch pair).
+        """
+        prior_field, prior_value = None, None
+        for field_name in ('entry_time', 'lunch_start', 'lunch_end', 'exit_time'):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if prior_value is not None and value < prior_value + timedelta(seconds=1):
                 raise ValidationError({
-                    'exit_time': (
-                        'O horário de saída deve ser pelo menos 1 segundo '
-                        'posterior ao horário de entrada.'
+                    field_name: (
+                        f'O horário de "{self._meta.get_field(field_name).verbose_name}" deve ser '
+                        f'pelo menos 1 segundo posterior ao horário de '
+                        f'"{self._meta.get_field(prior_field).verbose_name}".'
                     )
                 })
+            prior_field, prior_value = field_name, value
 
     def save(self, *args, **kwargs):
         if self.entry_time is not None:
@@ -108,6 +131,15 @@ class PresenceEvent(models.Model):
         max_length=3, choices=DIRECTION_CHOICES,
         verbose_name='Direção',
         help_text='Direção do evento: Entrada (IN) ou Saída (OUT).',
+    )
+    is_lunch = models.BooleanField(
+        default=False,
+        verbose_name='É do Almoço?',
+        help_text=(
+            'Marca este evento como parte do intervalo de almoço — '
+            'combinado com "direction", distingue Saída p/ Almoço (OUT) '
+            'de Retorno do Almoço (IN), em vez da Entrada/Saída do dia.'
+        ),
     )
     timestamp = models.DateTimeField(
         verbose_name='Data/Hora',

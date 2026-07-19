@@ -172,7 +172,7 @@ class TestAttendanceListLivePolling:
 
         changed_since = timezone.now().isoformat()
         time.sleep(1.1)  # AttendanceRecord requires exit_time >= entry_time + 1s
-        svc.record_exit(emp.pk)
+        record = svc.record_exit(emp.pk)
 
         response = client.get(
             reverse('attendance:list', kwargs={'pk': emp.pk}),
@@ -185,8 +185,12 @@ class TestAttendanceListLivePolling:
         assert body['count'] == 1
         assert body['removed_ids'] == []
         # The re-rendered row must show an actual exit time now, not the
-        # muted em-dash placeholder used for still-open records.
-        assert '—' not in body['html']
+        # muted em-dash placeholder used for still-open records (the lunch
+        # columns legitimately still show the placeholder — no lunch break
+        # was recorded on this record). Template rendering localizes the
+        # timestamp (TIME_ZONE), so compare against the localized value too.
+        assert timezone.localtime(record.exit_time).strftime('%d/%m/%Y %H:%M') in body['html']
+        assert body['html'].count('—') == 2  # lunch_start + lunch_end placeholders only
 
     def test_scoped_to_the_requested_employee_only(self):
         from attendance.service import AttendanceService

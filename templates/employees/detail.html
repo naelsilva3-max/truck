@@ -21,6 +21,8 @@
   <div class="presence-status mb-3">
     {% if presence_in %}
       <span class="presence-badge presence-badge--in">DENTRO — IN</span>
+    {% elif presence_is_lunch %}
+      <span class="presence-badge presence-badge--lunch">EM ALMOÇO</span>
     {% else %}
       <span class="presence-badge presence-badge--out">FORA — OUT</span>
     {% endif %}

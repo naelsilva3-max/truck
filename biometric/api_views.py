@@ -23,7 +23,7 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 from attendance.exceptions import DuplicateScanError
-from attendance.service import AttendanceService
+from attendance.service import AttendanceService, presence_label
 from biometric.auth import DeviceTokenAuthMixin
 from biometric.models import BiometricEnrollRequest, BiometricTemplate
 from employees.models import Employee
@@ -166,13 +166,16 @@ class KioskScanReportView(DeviceTokenAuthMixin, View):
         except ValueError as exc:
             return JsonResponse({'error': 'employee_inactive', 'detail': str(exc)}, status=409)
 
-        direction, ts = service.get_current_status(employee_id)
-        logger.info("Kiosk '%s' registrou ponto para funcionário %s: %s.", self.device.name, employee_id, direction)
+        direction, is_lunch, ts = service.get_current_status(employee_id)
+        label = presence_label(direction, is_lunch)
+        logger.info("Kiosk '%s' registrou ponto para funcionário %s: %s.", self.device.name, employee_id, label)
         return JsonResponse({
             'status': 'ok',
             'employee_id': employee_id,
             'employee_name': record.employee.name,
             'direction': direction,
+            'is_lunch': is_lunch,
+            'label': label,
             'timestamp': ts.isoformat() if ts else None,
             'record_id': record.pk,
         })

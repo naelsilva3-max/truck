@@ -23,6 +23,8 @@
         <th>Funcionário</th>
         <th>Data</th>
         <th>Entrada</th>
+        <th>Saída Almoço</th>
+        <th>Retorno Almoço</th>
         <th>Saída real</th>
       </tr>
     </thead>
@@ -32,6 +34,12 @@
         <td>{{ record.employee.name }}</td>
         <td>{{ record.date }}</td>
         <td>{{ record.entry_time|date:"d/m/Y H:i" }}</td>
+        <td>
+          {% if record.lunch_start %}{{ record.lunch_start|date:"d/m/Y H:i" }}{% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td>
+          {% if record.lunch_end %}{{ record.lunch_end|date:"d/m/Y H:i" }}{% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
         <td>
           <form method="post" action="{% url 'attendance:pending_review_fix' record.pk %}" class="filter-row">
             {% csrf_token %}

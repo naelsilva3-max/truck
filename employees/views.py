@@ -182,10 +182,11 @@ class EmployeeDetailView(LoginRequiredMixin, DetailView):
         ctx["has_biometric"] = hasattr(self.object, 'biometric')
         ctx["biometric_info"] = getattr(self.object, 'biometric', None)
         svc = AttendanceService()
-        direction, last_ts = svc.get_current_status(self.object.pk)
+        direction, is_lunch, last_ts = svc.get_current_status(self.object.pk)
         ctx["presence_direction"] = direction
         ctx["presence_last_ts"] = last_ts
         ctx["presence_in"] = direction == PresenceEvent.IN
+        ctx["presence_is_lunch"] = is_lunch
         return ctx
 
 

@@ -1,5 +1,16 @@
 {% for record in records %}
 <div class="calendar-record {% if not record.exit_time %}calendar-record--open{% endif %}">
-  {{ record.entry_time|date:"H:i" }}{% if record.exit_time %} → {{ record.exit_time|date:"H:i" }}{% else %} → em aberto{% endif %}
+  {{ record.entry_time|date:"H:i" }}
+  {% if record.lunch_start %}
+    → {{ record.lunch_start|date:"H:i" }} (almoço)
+    {% if record.lunch_end %}
+      {{ record.lunch_end|date:"H:i" }} →
+      {% if record.exit_time %}{{ record.exit_time|date:"H:i" }}{% else %}em aberto{% endif %}
+    {% else %}
+      em almoço
+    {% endif %}
+  {% else %}
+    {% if record.exit_time %} → {{ record.exit_time|date:"H:i" }}{% else %} → em aberto{% endif %}
+  {% endif %}
 </div>
 {% endfor %}

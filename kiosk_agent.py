@@ -352,12 +352,16 @@ def _notify_worker() -> None:
             logger.exception("Falha ao tocar o som de aviso.")
         try:
             if kind == "success":
-                employee_name, direction, time_label = payload
+                employee_name, direction, is_lunch, label, time_label = payload
                 is_in = direction == "IN"
+                if is_lunch:
+                    color = "#b8860b"  # amber — distinct from a full entrada/saída
+                else:
+                    color = "#1e7e34" if is_in else "#b02a37"  # green (entrada) / red (saída)
                 _show_fullscreen_message(
-                    "#1e7e34" if is_in else "#b02a37",  # green (entrada) / red (saída)
+                    color,
                     employee_name,
-                    "ENTRADA REGISTRADA" if is_in else "SAÍDA REGISTRADA",
+                    _SCAN_ANNOUNCEMENTS.get(label, "ENTRADA REGISTRADA" if is_in else "SAÍDA REGISTRADA"),
                     detail=f"às {time_label}" if time_label else "",
                 )
             else:
@@ -379,7 +383,19 @@ def _ensure_notify_worker() -> None:
             _notify_worker_started = True
 
 
-def _notify_scan_success(employee_name: str, direction: str, time_label: str = "") -> None:
+# Full announcement phrase per server-side `label` (see attendance.service.
+# presence_label) — kept here rather than built from `label.upper()` +
+# "REGISTRADA/REGISTRADO" client-side to avoid Portuguese gender-agreement
+# bugs ("retorno" is masculine, "entrada"/"saída" are feminine).
+_SCAN_ANNOUNCEMENTS = {
+    "Entrada": "ENTRADA REGISTRADA",
+    "Saída": "SAÍDA REGISTRADA",
+    "Saída para o Almoço": "SAÍDA PARA O ALMOÇO REGISTRADA",
+    "Retorno do Almoço": "RETORNO DO ALMOÇO REGISTRADO",
+}
+
+
+def _notify_scan_success(employee_name: str, direction: str, is_lunch: bool, label: str, time_label: str = "") -> None:
     """
     Give immediate on-screen + audible feedback for a successful scan.
 
@@ -394,7 +410,7 @@ def _notify_scan_success(employee_name: str, direction: str, time_label: str = "
     if sys.platform != "win32":
         return
     _ensure_notify_worker()
-    _notify_queue.put(("success", (employee_name, direction, time_label)))
+    _notify_queue.put(("success", (employee_name, direction, is_lunch, label, time_label)))
 
 
 def _notify_scan_denied(employee_name: str, retry_after_seconds: int) -> None:
@@ -449,6 +465,8 @@ def cmd_listen(args: argparse.Namespace) -> None:
                 _notify_scan_success(
                     body.get("employee_name", f"Funcionário #{employee_id}"),
                     body.get("direction", ""),
+                    body.get("is_lunch", False),
+                    body.get("label", ""),
                     _format_local_time(body.get("timestamp")),
                 )
             elif resp.status_code == 429:

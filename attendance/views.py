@@ -291,6 +291,7 @@ class PresenceHistoryView(LoginRequiredMixin, View):
                     'employee_name': pe.employee.name,
                     'timestamp': pe.timestamp,
                     'direction': pe.direction,
+                    'is_lunch': pe.is_lunch,
                     'attendance_record': pe.attendance_record_id,
                     'visit_pk': None,
                     'visitor_name': None,
@@ -318,6 +319,7 @@ class PresenceHistoryView(LoginRequiredMixin, View):
                     'company': v.visitor.company,
                     'timestamp': arrival_dt,
                     'direction': 'Entrada',
+                    'is_lunch': False,
                     'attendance_record': None,
                     'visit_pk': v.pk,
                 })
@@ -334,6 +336,7 @@ class PresenceHistoryView(LoginRequiredMixin, View):
                         'company': v.visitor.company,
                         'timestamp': depart_dt,
                         'direction': 'Saída',
+                        'is_lunch': False,
                         'attendance_record': None,
                         'visit_pk': v.pk,
                     })

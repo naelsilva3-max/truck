@@ -132,7 +132,8 @@ class TestBiometricAttendanceToggle:
         assert rec.exit_time is None
         assert rec.employee_id == emp.pk
 
-    def test_second_event_closes_record(self):
+    def test_second_event_advances_to_lunch_start(self):
+        """The 2nd scan of the day is "saída para o almoço", not a full exit — employees now cycle through 4 scans/day (see attendance/tests/test_service.py::TestAttendanceServiceLunchCycle for the full cycle)."""
         emp = make_employee()
         template_bytes = b"t" * 64
         BiometricTemplate.objects.create(employee=emp, template=template_bytes)
@@ -144,16 +145,17 @@ class TestBiometricAttendanceToggle:
         # First event: entry
         rec = svc.process_biometric_event(template_bytes)
         # Backdate entry (and its PresenceEvent, past SCAN_COOLDOWN) to
-        # ensure a valid exit and to clear the duplicate-scan cooldown.
+        # ensure valid ordering and to clear the duplicate-scan cooldown.
         backdated = rec.entry_time - AttendanceService.SCAN_COOLDOWN - timedelta(seconds=1)
         AttendanceRecord.objects.filter(pk=rec.pk).update(entry_time=backdated)
         PresenceEvent.objects.filter(attendance_record=rec).update(timestamp=backdated)
 
-        # Second event: exit
+        # Second event: saída para o almoço
         rec2 = svc.process_biometric_event(template_bytes)
 
-        assert rec2.exit_time is not None
-        assert rec2.exit_time > rec2.entry_time
+        assert rec2.lunch_start is not None
+        assert rec2.lunch_start > rec2.entry_time
+        assert rec2.exit_time is None
         assert rec2.pk == rec.pk
 
 

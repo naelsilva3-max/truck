@@ -17,6 +17,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def presence_label(direction: str, is_lunch: bool) -> str:
+    """Human label for a (direction, is_lunch) pair, shared by the kiosk API response and callers outside Django templates (which branch on direction/is_lunch directly)."""
+    if is_lunch:
+        return 'Retorno do Almoço' if direction == PresenceEvent.IN else 'Saída para o Almoço'
+    return 'Entrada' if direction == PresenceEvent.IN else 'Saída'
+
+
+def next_action_label(direction: str, is_lunch: bool) -> str:
+    """Label for the scan toggle_for_employee would perform *next*, given the employee's current (direction, is_lunch) status — mirrors the state order in toggle_for_employee."""
+    if direction == PresenceEvent.OUT and not is_lunch:
+        return 'Entrada'
+    if direction == PresenceEvent.IN and not is_lunch:
+        return 'Saída para o Almoço'
+    if direction == PresenceEvent.OUT and is_lunch:
+        return 'Retorno do Almoço'
+    return 'Saída'
+
+
 class AttendanceService:
 
     # Minimum time between two registrations (IN or OUT, in either order)
@@ -75,8 +93,8 @@ class AttendanceService:
         )
         return record
 
-    def get_current_status(self, employee_id: int) -> tuple[str, object | None]:
-        """Return (direction, timestamp) of the last PresenceEvent, or ('OUT', None)."""
+    def get_current_status(self, employee_id: int) -> tuple[str, bool, object | None]:
+        """Return (direction, is_lunch, timestamp) of the last PresenceEvent, or ('OUT', False, None)."""
         last = (
             PresenceEvent.objects
             .filter(employee_id=employee_id)
@@ -84,8 +102,8 @@ class AttendanceService:
             .first()
         )
         if last is None:
-            return PresenceEvent.OUT, None
-        return last.direction, last.timestamp
+            return PresenceEvent.OUT, False, None
+        return last.direction, last.is_lunch, last.timestamp
 
     def _check_active(self, employee_id: int) -> None:
         from employees.models import Employee
@@ -107,6 +125,42 @@ class AttendanceService:
         logger.info("Entry recorded for employee %s at %s.", employee_id, now)
         return record
 
+    def record_lunch_start(self, employee_id: int) -> AttendanceRecord:
+        self._check_active(employee_id)
+        record = self.get_open_record(employee_id)
+        if record is None or record.lunch_start is not None:
+            raise ValueError(f"No attendance record awaiting lunch start for employee {employee_id}.")
+        now = timezone.now()
+        record.lunch_start = now
+        record.save()
+        PresenceEvent.objects.create(
+            employee_id=employee_id,
+            direction=PresenceEvent.OUT,
+            is_lunch=True,
+            timestamp=now,
+            attendance_record=record,
+        )
+        logger.info("Lunch start recorded for employee %s at %s.", employee_id, now)
+        return record
+
+    def record_lunch_end(self, employee_id: int) -> AttendanceRecord:
+        self._check_active(employee_id)
+        record = self.get_open_record(employee_id)
+        if record is None or record.lunch_start is None or record.lunch_end is not None:
+            raise ValueError(f"No attendance record awaiting lunch end for employee {employee_id}.")
+        now = timezone.now()
+        record.lunch_end = now
+        record.save()
+        PresenceEvent.objects.create(
+            employee_id=employee_id,
+            direction=PresenceEvent.IN,
+            is_lunch=True,
+            timestamp=now,
+            attendance_record=record,
+        )
+        logger.info("Lunch end recorded for employee %s at %s.", employee_id, now)
+        return record
+
     def record_exit(self, employee_id: int) -> AttendanceRecord:
         self._check_active(employee_id)
         record = self.get_open_record(employee_id)
@@ -125,7 +179,7 @@ class AttendanceService:
         return record
 
     def _check_cooldown(self, employee_id: int) -> None:
-        _, last_ts = self.get_current_status(employee_id)
+        _, _, last_ts = self.get_current_status(employee_id)
         if last_ts is None:
             return
         elapsed = timezone.now() - last_ts
@@ -137,16 +191,24 @@ class AttendanceService:
 
     def toggle_for_employee(self, employee_id: int) -> AttendanceRecord:
         """
-        Toggle IN/OUT for an already-identified employee: records an entry if
-        there's no open record, otherwise closes it with an exit. A record
-        left open past MAX_OPEN_DURATION (see auto_close_if_stale) is flagged
-        and ignored here, so this scan starts a new entry instead of being
-        read as that stale record's exit.
+        Advance an already-identified employee through the fixed 4-scan daily
+        cycle — entrada, saída para o almoço, retorno do almoço, saída — one
+        step per call, based on which timestamps the day's open record still
+        lacks:
+          1. no open record            -> record_entry
+          2. lunch_start not set       -> record_lunch_start
+          3. lunch_start set, no lunch_end -> record_lunch_end
+          4. lunch cycle done          -> record_exit (closes the record)
+        The cycle is fixed/ordinal, not time-of-day-based: every employee is
+        expected to scan all 4 times, regardless of when in the day each
+        scan happens. A record left open past MAX_OPEN_DURATION (see
+        auto_close_if_stale) is flagged and ignored here, so this scan starts
+        a new entry instead of being read as a step in that stale record.
 
         Propagates Employee.DoesNotExist and ValueError (inactive employee)
-        raised by record_entry/record_exit's _check_active, and
-        DuplicateScanError (see SCAN_COOLDOWN/_check_cooldown) — callers
-        (e.g. the kiosk scan API view) map these to 4xx responses.
+        raised by the record_* methods' _check_active, and DuplicateScanError
+        (see SCAN_COOLDOWN/_check_cooldown) — callers (e.g. the kiosk scan
+        API view) map these to 4xx responses.
         """
         self._check_active(employee_id)
         self._check_cooldown(employee_id)
@@ -154,6 +216,10 @@ class AttendanceService:
         open_record = self.get_open_record(employee_id)
         if open_record is None:
             return self.record_entry(employee_id)
+        if open_record.lunch_start is None:
+            return self.record_lunch_start(employee_id)
+        if open_record.lunch_end is None:
+            return self.record_lunch_end(employee_id)
         return self.record_exit(employee_id)
 
     def process_biometric_event(self, template: bytes) -> AttendanceRecord | None:

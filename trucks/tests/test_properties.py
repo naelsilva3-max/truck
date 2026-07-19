@@ -192,14 +192,26 @@ def test_attendance_toggle_at_most_one_open(n):
     # disabled here so it doesn't interfere.
     with patch.object(AttendanceService, '_check_cooldown', lambda self, employee_id: None):
         for i in range(n):
-            # Backdate any open record so exit is valid
+            # Re-anchor any open record's already-set timestamps to a fresh
+            # deep-past baseline before the next step, so it's a valid >=1s
+            # before whatever the upcoming call sets (which may be a lunch
+            # touch, not just the final exit — the daily cycle now has 4
+            # steps). Fixed small offsets from target_entry (not each
+            # field's own prior value) sidestep entry_time and lunch_start/
+            # lunch_end living in different time frames after repeated
+            # backdating — e.g. lunch_start is set at real "now" by the
+            # service, while entry_time is synthetically deep in the past.
             open_rec = AttendanceRecord.objects.filter(
                 employee=emp, exit_time__isnull=True
             ).first()
             if open_rec:
-                AttendanceRecord.objects.filter(pk=open_rec.pk).update(
-                    entry_time=base_time + timedelta(seconds=i * 10)
-                )
+                target_entry = base_time + timedelta(seconds=i * 10)
+                updates = {'entry_time': target_entry}
+                if open_rec.lunch_start is not None:
+                    updates['lunch_start'] = target_entry + timedelta(seconds=2)
+                if open_rec.lunch_end is not None:
+                    updates['lunch_end'] = target_entry + timedelta(seconds=4)
+                AttendanceRecord.objects.filter(pk=open_rec.pk).update(**updates)
             svc.process_biometric_event(template_bytes)
 
     # This test backdates every open record far in the past before the next
@@ -239,13 +251,23 @@ def test_exit_time_always_after_entry_time(n):
     # cooldown.
     with patch.object(AttendanceService, '_check_cooldown', lambda self, employee_id: None):
         for i in range(n * 2):
+            # See test_attendance_toggle_at_most_one_open above: re-anchor
+            # every timestamp already set on the record to fixed small
+            # offsets from a fresh target_entry each iteration, so a
+            # mid-cycle record (lunch touched but not yet closed) keeps
+            # entry_time < lunch_start < lunch_end consistent regardless of
+            # how much real wall-clock time elapsed since they were set.
             open_rec = AttendanceRecord.objects.filter(
                 employee=emp, exit_time__isnull=True
             ).first()
             if open_rec:
-                AttendanceRecord.objects.filter(pk=open_rec.pk).update(
-                    entry_time=base + timedelta(seconds=i * 5)
-                )
+                target_entry = base + timedelta(seconds=i * 5)
+                updates = {'entry_time': target_entry}
+                if open_rec.lunch_start is not None:
+                    updates['lunch_start'] = target_entry + timedelta(seconds=1, milliseconds=500)
+                if open_rec.lunch_end is not None:
+                    updates['lunch_end'] = target_entry + timedelta(seconds=3)
+                AttendanceRecord.objects.filter(pk=open_rec.pk).update(**updates)
             svc.process_biometric_event(template_bytes)
 
     for rec in AttendanceRecord.objects.filter(employee=emp, exit_time__isnull=False):

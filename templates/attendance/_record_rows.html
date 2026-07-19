@@ -3,6 +3,20 @@
   <td>{{ record.date }}</td>
   <td>{{ record.entry_time|date:"d/m/Y H:i" }}</td>
   <td>
+    {% if record.lunch_start %}
+      {{ record.lunch_start|date:"d/m/Y H:i" }}
+    {% else %}
+      <span class="text-muted">—</span>
+    {% endif %}
+  </td>
+  <td>
+    {% if record.lunch_end %}
+      {{ record.lunch_end|date:"d/m/Y H:i" }}
+    {% else %}
+      <span class="text-muted">—</span>
+    {% endif %}
+  </td>
+  <td>
     {% if record.exit_time %}
       {{ record.exit_time|date:"d/m/Y H:i" }}
     {% else %}

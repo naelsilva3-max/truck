@@ -17,19 +17,27 @@
   <h2>Resultado do Scan</h2>
   <div class="presence-status">
     {% if result.is_in %}
-      <span class="presence-badge presence-badge--in">ENTRADA — IN</span>
+      <span class="presence-badge presence-badge--in">{{ result.status_label|upper }} — IN</span>
+    {% elif result.is_lunch %}
+      <span class="presence-badge presence-badge--lunch">{{ result.status_label|upper }}</span>
     {% else %}
-      <span class="presence-badge presence-badge--out">SAÍDA — OUT</span>
+      <span class="presence-badge presence-badge--out">{{ result.status_label|upper }} — OUT</span>
     {% endif %}
     <strong>{{ result.employee.name }}</strong>
     <span class="text-muted">{{ result.last_ts|date:"d/m/Y H:i:s" }}</span>
   </div>
   {% if result.record %}
-    {% if result.is_in %}
-      <p class="text-muted mt-2">Novo registro de ponto aberto às {{ result.record.entry_time|date:"H:i:s" }}.</p>
-    {% else %}
-      <p class="text-muted mt-2">Saída registrada às {{ result.record.exit_time|date:"H:i:s" }} (entrada {{ result.record.entry_time|date:"H:i:s" }}).</p>
-    {% endif %}
+    <p class="text-muted mt-2">
+      {% if result.is_lunch and result.is_in %}
+        Retorno do almoço registrado às {{ result.record.lunch_end|date:"H:i:s" }}.
+      {% elif result.is_lunch %}
+        Saída para almoço registrada às {{ result.record.lunch_start|date:"H:i:s" }}.
+      {% elif result.is_in %}
+        Novo registro de ponto aberto às {{ result.record.entry_time|date:"H:i:s" }}.
+      {% else %}
+        Saída registrada às {{ result.record.exit_time|date:"H:i:s" }} (entrada {{ result.record.entry_time|date:"H:i:s" }}).
+      {% endif %}
+    </p>
   {% endif %}
 </div>
 {% endif %}
@@ -63,9 +71,11 @@
           </td>
           <td>
             {% if row.is_in %}
-              <span class="badge badge--success">IN</span>
+              <span class="badge badge--success">{{ row.status_label }}</span>
+            {% elif row.is_lunch %}
+              <span class="badge badge--warning">{{ row.status_label }}</span>
             {% else %}
-              <span class="badge badge--danger">OUT</span>
+              <span class="badge badge--danger">{{ row.status_label }}</span>
             {% endif %}
           </td>
           <td>
@@ -80,7 +90,7 @@
               {% csrf_token %}
               <input type="hidden" name="employee_pk" value="{{ row.employee.pk }}">
               <button type="submit" class="btn btn--sm {% if row.is_in %}btn--danger{% else %}btn--success{% endif %}">
-                {% if row.is_in %}Simular Saída{% else %}Simular Entrada{% endif %}
+                Simular {{ row.next_action_label }}
               </button>
             </form>
           </td>

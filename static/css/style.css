@@ -1322,6 +1322,12 @@ tr.row-inactive {
   border: 2px solid var(--color-error);
 }
 
+.presence-badge--lunch {
+  background: #fff3cd;
+  color: #664d03;
+  border: 2px solid var(--color-warning);
+}
+
 .presence-status {
   display: flex;
   align-items: center;
@@ -1667,11 +1673,6 @@ tr.row-inactive {
   background: var(--color-bg);
 }
 
-.visitor-picker-item--create {
-  color: var(--color-primary);
-  font-weight: 600;
-}
-
 .visitor-picker-selected {
   display: flex;
   align-items: center;
@@ -1680,14 +1681,6 @@ tr.row-inactive {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-}
-
-.visitor-quick-create {
-  margin-top: .75rem;
-  padding: 1rem;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
 }
 
 /* ----- Tab bar (segmented filter control, distinct from action buttons) ----- */
