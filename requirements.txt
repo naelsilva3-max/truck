@@ -11,6 +11,7 @@ greenlet==3.5.3
 hypothesis==6.155.2
 idna==3.18
 iniconfig==2.3.0
+Markdown==3.10.2
 packaging==26.2
 pillow==12.2.0
 pluggy==1.6.0

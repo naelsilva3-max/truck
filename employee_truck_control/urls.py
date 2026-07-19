@@ -4,7 +4,12 @@ from django.urls import path, include
 
 from accounts.views import CPFLoginView
 from attendance.views import AttendanceCalendarView, PresenceHistoryView
-from employee_truck_control.views import ProtectedMediaView, ReportsIndexView
+from employee_truck_control.views import (
+    DocumentationIndexView,
+    DocumentationPageView,
+    ProtectedMediaView,
+    ReportsIndexView,
+)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -19,6 +24,10 @@ urlpatterns = [
     path("attendance/calendario/", AttendanceCalendarView.as_view(), name="attendance_calendar"),
     # Central hub for every PDF report in the system
     path("relatorios/", ReportsIndexView.as_view(), name="reports_index"),
+    # Docs (docs/system/, docs/manual/) rendered in-app
+    path("documentacao/", DocumentationIndexView.as_view(), name="documentation_index"),
+    path("documentacao/<str:section>/", DocumentationPageView.as_view(), name="documentation_section"),
+    path("documentacao/<str:section>/<str:page>/", DocumentationPageView.as_view(), name="documentation_page"),
     path("trucks/", include("trucks.urls")),
     path("biometric/", include("biometric.urls")),
     path("visitors/", include("visitors.urls")),

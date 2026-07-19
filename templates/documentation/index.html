@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Documentação{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Documentação</h1>
+</div>
+
+{% for group in nav %}
+<div class="section-card">
+  <h2>{{ group.label }}</h2>
+  <ul>
+    {% for entry in group.entries %}
+    <li><a href="{{ entry.url }}">{{ entry.title }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endfor %}
+{% endblock %}

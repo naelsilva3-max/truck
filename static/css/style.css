@@ -1798,3 +1798,106 @@ tr.row-inactive {
     font-size: .65rem;
   }
 }
+
+/* ----- Documentação ----- */
+.docs-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .docs-layout { grid-template-columns: 1fr; }
+}
+
+.docs-nav {
+  position: sticky;
+  top: 1rem;
+}
+
+.docs-nav-section + .docs-nav-section {
+  margin-top: 1.25rem;
+}
+
+.docs-nav-section h3 {
+  font-size: .85rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--color-muted);
+  margin: 0 0 .4rem;
+}
+
+.docs-nav-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.docs-nav-section a {
+  display: block;
+  padding: .3rem .5rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: .9rem;
+}
+
+.docs-nav-section a:hover {
+  background: var(--color-bg);
+}
+
+.docs-nav-section a.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.docs-content {
+  line-height: 1.65;
+}
+
+.docs-content h1 { font-size: 1.6rem; margin: 0 0 1rem; }
+.docs-content h2 { font-size: 1.25rem; margin: 1.75rem 0 .75rem; }
+.docs-content h3 { font-size: 1.05rem; margin: 1.25rem 0 .5rem; }
+
+.docs-content p,
+.docs-content ul,
+.docs-content ol {
+  margin: 0 0 1rem;
+}
+
+.docs-content ul,
+.docs-content ol {
+  padding-left: 1.5rem;
+}
+
+.docs-content li + li {
+  margin-top: .25rem;
+}
+
+.docs-content pre {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0 0 1rem;
+}
+
+.docs-content pre code {
+  background: none;
+  padding: 0;
+  font-size: .85rem;
+}
+
+.docs-content blockquote {
+  margin: 0 0 1rem;
+  padding: .5rem 1rem;
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-bg);
+  color: var(--color-muted);
+}
+
+.docs-content table {
+  margin: 0 0 1.25rem;
+}

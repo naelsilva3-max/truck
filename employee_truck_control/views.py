@@ -3,10 +3,13 @@ import os
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import FileResponse, Http404, HttpResponse
+from django.shortcuts import render
 from django.views import View
 from django.views.generic import TemplateView
 
 from trucks.models import Truck
+
+from . import documentation
 
 
 class ProtectedMediaView(LoginRequiredMixin, View):
@@ -80,3 +83,32 @@ class ReportsIndexView(LoginRequiredMixin, TemplateView):
         ]
         ctx['trucks'] = Truck.objects.order_by('license_plate')
         return ctx
+
+
+class DocumentationIndexView(LoginRequiredMixin, TemplateView):
+    """Landing page linking every section of docs/system/ and docs/manual/."""
+
+    template_name = 'documentation/index.html'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['nav'] = documentation.nav_tree()
+        return ctx
+
+
+class DocumentationPageView(LoginRequiredMixin, View):
+    """Renders one Markdown doc page. `page` defaults to a section's README."""
+
+    def get(self, request, section, page='README'):
+        try:
+            title, content_html = documentation.render_doc(section, page)
+        except documentation.DocNotFound:
+            raise Http404
+        return render(request, 'documentation/page.html', {
+            'title': title,
+            'content_html': content_html,
+            'section': section,
+            'section_label': documentation.SECTION_LABELS.get(section, section),
+            'current_page': page,
+            'nav': documentation.nav_tree(),
+        })
