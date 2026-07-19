@@ -9,12 +9,14 @@ Security:
 - employee_pk is validated as a positive integer before DB lookup.
 """
 import hashlib
+import os
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.http import Http404
-from django.shortcuts import redirect, render
+from django.core.exceptions import ValidationError
+from django.http import FileResponse, Http404, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
 from accounts.logging import log_action
@@ -22,7 +24,7 @@ from accounts.mixins import MasterRequiredMixin
 from accounts.models import SystemLog
 from attendance.models import PresenceEvent
 from attendance.service import AttendanceService, next_action_label, presence_label
-from biometric.models import BiometricTemplate, KioskDevice
+from biometric.models import BiometricTemplate, KioskDevice, KioskInstallerBuild
 
 
 class StaffRequiredMixin(UserPassesTestMixin):
@@ -133,3 +135,90 @@ class KioskTokenGenerateView(MasterRequiredMixin, View):
         return render(request, self.template_name, {
             'devices': self._devices(), 'raw_token': raw_token, 'new_device': device,
         })
+
+
+class KioskInstallerListView(MasterRequiredMixin, View):
+    """
+    Repositório dos instaladores do quiosque (kiosk_installer/build.ps1
+    output): upload de uma nova versão + lista para download em qualquer
+    computador onde o ZK9500 será instalado, sem precisar de um canal de
+    transferência de arquivo separado (pendrive, e-mail, etc.).
+    """
+    template_name = 'biometric/kiosk_installer.html'
+    MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200MB — plenty above the ~55MB the exe currently weighs
+
+    def _builds(self):
+        return KioskInstallerBuild.objects.select_related('uploaded_by').all()
+
+    def get(self, request):
+        return render(request, self.template_name, {'builds': self._builds()})
+
+    def post(self, request):
+        version = request.POST.get('version', '').strip()
+        notes = request.POST.get('notes', '').strip()
+        uploaded_file = request.FILES.get('file')
+
+        if not version or uploaded_file is None:
+            messages.error(request, 'Informe a versão e selecione o arquivo do instalador.')
+            return redirect('biometric:kiosk_installer')
+
+        if uploaded_file.size > self.MAX_UPLOAD_BYTES:
+            messages.error(request, f'Arquivo excede o limite de {self.MAX_UPLOAD_BYTES // (1024 * 1024)}MB.')
+            return redirect('biometric:kiosk_installer')
+
+        build = KioskInstallerBuild(
+            version=version, notes=notes, file=uploaded_file,
+            uploaded_by=request.user if request.user.is_authenticated else None,
+        )
+        try:
+            build.save()
+        except ValidationError as e:
+            messages.error(request, ' '.join(e.messages))
+            return redirect('biometric:kiosk_installer')
+
+        log_action(request, SystemLog.ACTION_CREATE, f'Instalador de quiosque enviado: versão {build.version}')
+        messages.success(request, f'Instalador versão {build.version} enviado com sucesso.')
+        return redirect('biometric:kiosk_installer')
+
+
+class KioskInstallerDownloadView(MasterRequiredMixin, View):
+    """
+    Streams a KioskInstallerBuild's .exe. Mirrors ProtectedMediaView's
+    X-Accel-Redirect handoff to nginx in production (so Django doesn't
+    buffer a ~55MB file through a worker), but master-gated rather than
+    open to any logged-in user, and forces a clean attachment filename
+    instead of relying on the browser to guess one from the URL.
+    """
+
+    def get(self, request, pk):
+        build = get_object_or_404(KioskInstallerBuild, pk=pk)
+        filename = f'ZK9500KioskSetup-{build.version}.exe'
+
+        if settings.DEBUG:
+            if not build.file.storage.exists(build.file.name):
+                raise Http404
+            return FileResponse(build.file.open('rb'), as_attachment=True, filename=filename)
+
+        media_root = os.path.realpath(str(settings.MEDIA_ROOT))
+        full_path = os.path.realpath(os.path.join(media_root, build.file.name))
+        if full_path != media_root and not full_path.startswith(media_root + os.sep):
+            raise Http404
+
+        response = HttpResponse()
+        response['X-Accel-Redirect'] = '/protected-media/' + build.file.name
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        del response['Content-Type']  # let nginx set it from the file itself
+        return response
+
+
+class KioskInstallerDeleteView(MasterRequiredMixin, View):
+    """Removes a KioskInstallerBuild — the DB row and its file on disk."""
+
+    def post(self, request, pk):
+        build = get_object_or_404(KioskInstallerBuild, pk=pk)
+        version = build.version
+        build.file.delete(save=False)
+        build.delete()
+        log_action(request, SystemLog.ACTION_DELETE, f'Instalador de quiosque removido: versão {version}')
+        messages.success(request, f'Instalador versão {version} removido.')
+        return redirect('biometric:kiosk_installer')

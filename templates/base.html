@@ -248,6 +248,7 @@
               <a href="{% url 'accounts:manage_users' %}" role="menuitem">Usuários</a>
               <a href="{% url 'accounts:system_logs' %}" role="menuitem">Log do Sistema</a>
               <a href="{% url 'biometric:kiosk_token' %}" role="menuitem">Gerar Token de Quiosque</a>
+              <a href="{% url 'biometric:kiosk_installer' %}" role="menuitem">Instalador do Quiosque</a>
             {% endif %}
             <a href="{% url 'accounts:my_account' %}" role="menuitem">Minha Conta</a>
             <form method="post" action="{% url 'logout' %}" class="navbar-dropdown-form">

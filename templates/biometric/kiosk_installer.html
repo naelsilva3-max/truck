@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Instalador do Quiosque{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Instalador do Quiosque</h1>
+</div>
+
+<div class="alert alert--info">
+  Baixe o instalador aqui no computador onde o leitor ZK9500 será instalado.
+  Novas versões são geradas via <code>kiosk_installer\build.ps1</code> e enviadas abaixo.
+</div>
+
+<div class="card mb-3">
+  <h2>Enviar nova versão</h2>
+  <form method="post" enctype="multipart/form-data" class="enroll-form">
+    {% csrf_token %}
+    <div class="form-group">
+      <label for="id_version" class="form-label">Versão</label>
+      <input type="text" id="id_version" name="version" class="form-control" placeholder='Ex.: "1.1"' required>
+    </div>
+    <div class="form-group">
+      <label for="id_notes" class="form-label">Notas (opcional)</label>
+      <input type="text" id="id_notes" name="notes" class="form-control" placeholder="O que mudou nesta versão">
+    </div>
+    <div class="form-group">
+      <label for="id_file" class="form-label">Arquivo (.exe)</label>
+      <input type="file" id="id_file" name="file" class="form-control" accept=".exe" required>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn--primary">Enviar</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Versões disponíveis</h2>
+  {% if builds %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Versão</th>
+          <th>Notas</th>
+          <th>Enviado em</th>
+          <th>Enviado por</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for build in builds %}
+        <tr>
+          <td>{{ build.version }}</td>
+          <td>{{ build.notes|default:"—" }}</td>
+          <td>{{ build.uploaded_at|date:"d/m/Y H:i" }}</td>
+          <td>{{ build.uploaded_by.username|default:"—" }}</td>
+          <td>
+            <a href="{% url 'biometric:kiosk_installer_download' build.pk %}" class="btn btn--sm btn--primary">Baixar</a>
+            <form method="post" action="{% url 'biometric:kiosk_installer_delete' build.pk %}" class="d-inline"
+                  onsubmit="return confirm('Remover o instalador versão {{ build.version }}?');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn--sm btn--danger">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="text-muted">Nenhum instalador enviado ainda.</p>
+  {% endif %}
+</div>
+{% endblock %}

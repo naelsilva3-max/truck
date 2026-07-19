@@ -23,4 +23,5 @@ Write-Host "==> Compiling installer with Inno Setup ($Iscc)..." -ForegroundColor
 & $Iscc "installer.iss"
 if ($LASTEXITCODE -ne 0) { throw "ISCC falhou (exit $LASTEXITCODE)." }
 
-Write-Host "==> Done: $ScriptDir\output\ZK9500KioskSetup.exe" -ForegroundColor Green
+$SetupExe = Get-ChildItem -Path "$ScriptDir\output" -Filter "ZK9500KioskSetup*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+Write-Host "==> Done: $SetupExe" -ForegroundColor Green

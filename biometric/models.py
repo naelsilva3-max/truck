@@ -232,3 +232,52 @@ class BiometricEnrollRequest(models.Model):
         self.status = self.CANCELLED
         self.completed_at = timezone.now()
         self.save(update_fields=['status', 'completed_at'])
+
+
+class KioskInstallerBuild(models.Model):
+    """
+    A built ZK9500KioskSetup-*.exe (see kiosk_installer/build.ps1), uploaded
+    here so whoever is setting up a new kiosk machine can download it
+    straight from the system instead of needing a separate file-transfer
+    channel. Master-only (see KioskInstallerListView/DownloadView) — this
+    isn't sensitive (no token is baked into the exe, it's entered during
+    install), but publishing new builds is an admin action.
+    """
+
+    version = models.CharField(
+        max_length=20,
+        verbose_name='Versão',
+        help_text='Versão do instalador (ex.: "1.1"), deve casar com MyAppVersion em kiosk_installer/installer.iss.',
+    )
+    file = models.FileField(
+        upload_to='kiosk_installer/',
+        verbose_name='Arquivo',
+        help_text='O instalador ZK9500KioskSetup-*.exe gerado por kiosk_installer/build.ps1.',
+    )
+    notes = models.CharField(
+        max_length=255, blank=True,
+        verbose_name='Notas',
+        help_text='Resumo opcional do que mudou nesta versão.',
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name='Enviado em')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True, on_delete=models.SET_NULL,
+        verbose_name='Enviado por',
+    )
+
+    class Meta:
+        ordering = ['-uploaded_at']
+        verbose_name = 'Instalador do Quiosque'
+        verbose_name_plural = 'Instaladores do Quiosque'
+
+    def __str__(self):
+        return f'ZK9500KioskSetup-{self.version}.exe'
+
+    def clean(self):
+        if self.file and not self.file.name.lower().endswith('.exe'):
+            raise ValidationError({'file': 'O instalador deve ser um arquivo .exe.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)

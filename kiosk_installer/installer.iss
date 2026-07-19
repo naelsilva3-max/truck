@@ -17,7 +17,7 @@
 ;   6. Uninstalling removes the Scheduled Task before removing the files.
 
 #define MyAppName "ZK9500 Kiosk"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.1"
 
 [Setup]
 AppId={{5F051ACE-0489-4AD6-844C-FDBD962193CC}
@@ -29,7 +29,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
-OutputBaseFilename=ZK9500KioskSetup
+OutputBaseFilename=ZK9500KioskSetup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BiometricEnrollRequest, BiometricTemplate, KioskDevice
+from .models import BiometricEnrollRequest, BiometricTemplate, KioskDevice, KioskInstallerBuild
 
 
 @admin.register(KioskDevice)
@@ -45,6 +45,13 @@ class BiometricTemplateAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(KioskInstallerBuild)
+class KioskInstallerBuildAdmin(admin.ModelAdmin):
+    list_display = ('version', 'notes', 'uploaded_by', 'uploaded_at')
+    readonly_fields = ('uploaded_at',)
+    ordering = ('-uploaded_at',)
 
 
 @admin.register(BiometricEnrollRequest)
