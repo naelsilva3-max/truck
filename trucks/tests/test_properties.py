@@ -42,7 +42,11 @@ valid_plate_mercosul = st.from_regex(r"^[A-Z]{3}[0-9][A-Z][0-9]{2}$", fullmatch=
 valid_plate_old = st.from_regex(r"^[A-Z]{3}[0-9]{4}$", fullmatch=True)
 valid_plate = st.one_of(valid_plate_mercosul, valid_plate_old)
 valid_chassis = st.from_regex(r"^[A-Z0-9]{17}$", fullmatch=True)
-valid_model = st.text(min_size=1, max_size=100).filter(lambda s: s.strip())
+valid_model = st.text(
+    alphabet=st.characters(blacklist_categories=("Cs",), blacklist_characters="\x00"),
+    min_size=1,
+    max_size=100,
+).filter(lambda s: s.strip())
 valid_color = st.sampled_from([c.value for c in TruckColor])
 valid_year = st.integers(min_value=1900, max_value=date.today().year)
 
@@ -396,6 +400,28 @@ def test_truck_round_trip(plate, chassis, model, color, year):
     assert fetched.model == str(truck_model)
     assert fetched.truck_model_id == truck_model.pk
     assert fetched.year == year
+
+
+@pytest.mark.django_db(transaction=True)
+@given(prefix=st.text(max_size=10), suffix=st.text(max_size=10))
+@settings(max_examples=20, deadline=None)
+def test_truck_brand_and_model_reject_null_character(prefix, suffix):
+    # TruckBrand/TruckModel didn't call full_clean() in save() (unlike
+    # Truck itself), so the ProhibitNullCharactersValidator on their `name`
+    # field was never actually invoked -- a NUL byte bypassed validation
+    # entirely and only failed at the DB driver with a raw ValueError.
+    from django.core.exceptions import ValidationError
+    name = f"{prefix}\x00{suffix}"
+    brand_count_before = TruckBrand.objects.count()
+    with pytest.raises(ValidationError):
+        TruckBrand.objects.create(name=name)
+    assert TruckBrand.objects.count() == brand_count_before
+
+    brand = TruckBrand.objects.create(name=f"Brand{unique_suffix()}")
+    model_count_before = TruckModel.objects.count()
+    with pytest.raises(ValidationError):
+        TruckModel.objects.create(brand=brand, name=name)
+    assert TruckModel.objects.count() == model_count_before
 
 
 # ---------------------------------------------------------------------------

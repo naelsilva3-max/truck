@@ -54,6 +54,10 @@ class TruckBrand(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 
 class TruckModel(models.Model):
     brand = models.ForeignKey(
@@ -81,6 +85,10 @@ class TruckModel(models.Model):
 
     def __str__(self):
         return f'{self.brand.name} {self.name}'
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class Truck(models.Model):
