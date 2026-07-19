@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views import View
 
+from accounts.mixins import EditRequiredMixin
 from employee_truck_control.http import infinite_scroll_json, is_ajax_request, parse_date_param
 from employees.models import Employee
 from .forms import VisitorForm, VisitForm
@@ -53,7 +54,7 @@ class VisitorListView(LoginRequiredMixin, View):
         return render(request, self.template_name, {'visitors': page_obj, 'page_obj': page_obj})
 
 
-class VisitorCreateView(LoginRequiredMixin, View):
+class VisitorCreateView(EditRequiredMixin, View):
     """Create a new visitor record."""
     template_name = 'visitors/visitor_form.html'
 
@@ -77,7 +78,7 @@ class VisitorCreateView(LoginRequiredMixin, View):
         })
 
 
-class VisitorUpdateView(LoginRequiredMixin, View):
+class VisitorUpdateView(EditRequiredMixin, View):
     """Edit an existing visitor."""
     template_name = 'visitors/visitor_form.html'
 
@@ -245,7 +246,7 @@ class VisitListView(LoginRequiredMixin, View):
         })
 
 
-class VisitCreateView(LoginRequiredMixin, View):
+class VisitCreateView(EditRequiredMixin, View):
     """Register a new visit."""
     template_name = 'visitors/visit_form.html'
 
@@ -289,7 +290,7 @@ class VisitDetailView(LoginRequiredMixin, View):
         return render(request, self.template_name, {'visit': visit})
 
 
-class VisitDepartView(LoginRequiredMixin, View):
+class VisitDepartView(EditRequiredMixin, View):
     """Register actual departure time for a visit."""
 
     def post(self, request, pk):

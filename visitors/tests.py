@@ -71,7 +71,7 @@ class TestVisitorFormPhotoValidation:
 @pytest.mark.django_db
 class TestVisitorFormRendersWithDocumentVariants:
     def test_create_form_renders(self):
-        user = User.objects.create_user(username='someone', password='pass')
+        user = make_edit_user()
         client = Client()
         client.force_login(user)
 
@@ -82,7 +82,7 @@ class TestVisitorFormRendersWithDocumentVariants:
         assert b'camera-btn-file' in response.content  # was missing before this change
 
     def test_edit_form_renders_with_existing_pdf_document(self):
-        user = User.objects.create_user(username='someone2', password='pass')
+        user = make_edit_user()
         visitor = Visitor.objects.create(name='Doc Visitor')
         visitor.document_photo.save('rg.pdf', SimpleUploadedFile('rg.pdf', b'%PDF-1.4\n%%EOF'), save=True)
 
@@ -97,6 +97,14 @@ class TestVisitorFormRendersWithDocumentVariants:
 
 def make_user():
     return User.objects.create_user(username='plain', password='pass')
+
+
+def make_edit_user():
+    from accounts.models import UserProfile
+    user = User.objects.create_user(username='editor', password='pass')
+    user.profile.role = UserProfile.MASTER
+    user.profile.save()
+    return user
 
 
 def make_visitor(**kw):
@@ -216,7 +224,7 @@ class TestVisitListLivePoll:
 @pytest.mark.django_db
 class TestVisitListLiveUpdate:
     def test_departure_removes_visit_from_active_tab(self):
-        user = make_user()
+        user = make_edit_user()
         visit = make_visit()
         now = timezone.now()
         Visit.objects.filter(pk=visit.pk).update(updated_at=now - timedelta(minutes=10))
@@ -239,7 +247,7 @@ class TestVisitListLiveUpdate:
         assert body['removed_ids'] == [visit.pk]
 
     def test_departure_adds_visit_to_completed_tab(self):
-        user = make_user()
+        user = make_edit_user()
         visit = make_visit()
         now = timezone.now()
         Visit.objects.filter(pk=visit.pk).update(updated_at=now - timedelta(minutes=10))
@@ -261,7 +269,7 @@ class TestVisitListLiveUpdate:
         assert visit.visitor.name in body['html']
 
     def test_departure_visible_in_all_tab(self):
-        user = make_user()
+        user = make_edit_user()
         visit = make_visit()
         now = timezone.now()
         Visit.objects.filter(pk=visit.pk).update(updated_at=now - timedelta(minutes=10))
