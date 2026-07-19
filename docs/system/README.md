@@ -13,7 +13,6 @@ Para o manual de uso do dia a dia (RH, portaria, gestores), veja [`docs/manual/`
 5. [Arquitetura do kiosk](05-arquitetura-kiosk.md)
 6. [Deploy e operação](06-deploy-e-operacao.md)
 7. [Testes](07-testes.md)
-8. [Controles de acesso e gaps conhecidos](08-controles-de-acesso-e-gaps-conhecidos.md)
 
 ## Convenção
 

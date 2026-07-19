@@ -24,8 +24,7 @@ SECTIONS = {
         'system',
         ['README', '01-visao-geral', '02-modelo-de-dados',
          '03-autenticacao-e-controle-de-acesso', '04-fluxo-biometrico',
-         '05-arquitetura-kiosk', '06-deploy-e-operacao', '07-testes',
-         '08-controles-de-acesso-e-gaps-conhecidos'],
+         '05-arquitetura-kiosk', '06-deploy-e-operacao', '07-testes'],
     ),
     'manual': (
         'manual',

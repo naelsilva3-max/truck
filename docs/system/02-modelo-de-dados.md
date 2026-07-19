@@ -22,7 +22,7 @@ Mesmo formato de PII que `Employee` (nome, RG, CPF, foto, documento). `Visit` li
 Estende `django.contrib.auth.User` com `cpf` (texto plano, único — usado para login) e `role` (`simple`/`admin`/`master`).
 
 ### `accounts.SystemLog`
-Log de auditoria **imutável** (`save()`/`delete()` levantam `PermissionError` em update/delete). Guarda `ip_address`. Não existe hoje um job de retenção/anonimização — ver [gap conhecido](08-controles-de-acesso-e-gaps-conhecidos.md).
+Log de auditoria **imutável** (`save()`/`delete()` levantam `PermissionError` em update/delete). Guarda `ip_address`.
 
 ### `biometric.BiometricTemplate` 🔴
 ```python

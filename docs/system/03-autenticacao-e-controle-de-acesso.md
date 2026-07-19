@@ -41,7 +41,3 @@ Os templates já escondem botões de escrita para quem não tem `can_edit` (cont
 - **`BiometricTemplateProtectionMiddleware`** (`employee_truck_control/middleware.py`): impede que uma instância de `BiometricTemplate` chegue a um contexto de template por engano — levanta `PermissionError` se isso acontecer. Defesa contra vazamento acidental do template criptografado numa página HTML.
 - **`ContentSecurityPolicyMiddleware`**: define um header CSP real (`unsafe-inline` mantido deliberadamente — não há bundler de JS no projeto).
 - **`ProtectedMediaView`** (`employee_truck_control/urls.py` → `/media/<path>`): fotos e documentos (funcionário, visitante) não são servidos diretamente pelo nginx — passam por essa view (login obrigatório, checagem de path traversal) que delega o byte-serving de volta ao nginx via `X-Accel-Redirect` (`internal;` no nginx, ver [Deploy e operação](06-deploy-e-operacao.md)).
-
-## Não coberto hoje
-
-Ver [Controles de acesso e gaps conhecidos](08-controles-de-acesso-e-gaps-conhecidos.md) para os itens ainda em aberto.
