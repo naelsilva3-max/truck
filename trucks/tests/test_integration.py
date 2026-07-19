@@ -150,8 +150,10 @@ class TestBiometricAttendanceToggle:
         AttendanceRecord.objects.filter(pk=rec.pk).update(entry_time=backdated)
         PresenceEvent.objects.filter(attendance_record=rec).update(timestamp=backdated)
 
-        # Second event: saída para o almoço
-        rec2 = svc.process_biometric_event(template_bytes)
+        # Second event: saída para o almoço (forced within the lunch window,
+        # deterministic regardless of wall-clock time when tests run)
+        with patch.object(AttendanceService, '_within_lunch_window', staticmethod(lambda: True)):
+            rec2 = svc.process_biometric_event(template_bytes)
 
         assert rec2.lunch_start is not None
         assert rec2.lunch_start > rec2.entry_time

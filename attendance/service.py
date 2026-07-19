@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date as _date, timedelta
+from datetime import date as _date, time as _time, timedelta
 from typing import TYPE_CHECKING
 
 from django.utils import timezone
@@ -25,11 +25,14 @@ def presence_label(direction: str, is_lunch: bool) -> str:
 
 
 def next_action_label(direction: str, is_lunch: bool) -> str:
-    """Label for the scan toggle_for_employee would perform *next*, given the employee's current (direction, is_lunch) status — mirrors the state order in toggle_for_employee."""
+    """Label for the scan toggle_for_employee would perform *next*, given the employee's current (direction, is_lunch) status — mirrors the state order in toggle_for_employee, including the lunch-window check for the 2nd-scan-of-the-day case."""
     if direction == PresenceEvent.OUT and not is_lunch:
         return 'Entrada'
     if direction == PresenceEvent.IN and not is_lunch:
-        return 'Saída para o Almoço'
+        # AttendanceService is defined later in this module — fine, since
+        # this function is only ever called after the module has finished
+        # loading, never at import time.
+        return 'Saída para o Almoço' if AttendanceService._within_lunch_window() else 'Saída'
     if direction == PresenceEvent.OUT and is_lunch:
         return 'Retorno do Almoço'
     return 'Saída'
@@ -51,8 +54,27 @@ class AttendanceService:
     # misread as that stale record's exit.
     MAX_OPEN_DURATION = timedelta(hours=16)
 
+    # Disambiguates the 2nd scan of the day: within this local-time window
+    # it's read as "saída para o almoço" (starting the lunch leg of the
+    # fixed 4-scan cycle); outside it, it's read as the final "saída" for
+    # the day, closing the record immediately instead of leaving it open
+    # waiting for a "retorno do almoço" that was never coming (e.g. an
+    # employee who doesn't take lunch, or forgot the lunch-out scan) — that
+    # used to only get caught by the MAX_OPEN_DURATION auto-close ~16h
+    # later, showing a wrong "em almoço" status in the meantime and risking
+    # the next day's real entrada being misread as a lunch return. Once the
+    # 3rd/4th scans are reached (lunch_start already set), the order is
+    # fixed regardless of time — only this one decision is time-based.
+    LUNCH_WINDOW_START = _time(11, 0)
+    LUNCH_WINDOW_END = _time(14, 30)
+
     def __init__(self, biometric_service: '_BiometricServiceType | None' = None) -> None:
         self._biometric_service = biometric_service
+
+    @classmethod
+    def _within_lunch_window(cls) -> bool:
+        now_local = timezone.localtime(timezone.now()).time()
+        return cls.LUNCH_WINDOW_START <= now_local <= cls.LUNCH_WINDOW_END
 
     def _get_biometric_service(self) -> '_BiometricServiceType':
         if self._biometric_service is None:
@@ -191,19 +213,23 @@ class AttendanceService:
 
     def toggle_for_employee(self, employee_id: int) -> AttendanceRecord:
         """
-        Advance an already-identified employee through the fixed 4-scan daily
-        cycle — entrada, saída para o almoço, retorno do almoço, saída — one
-        step per call, based on which timestamps the day's open record still
-        lacks:
-          1. no open record            -> record_entry
-          2. lunch_start not set       -> record_lunch_start
-          3. lunch_start set, no lunch_end -> record_lunch_end
-          4. lunch cycle done          -> record_exit (closes the record)
-        The cycle is fixed/ordinal, not time-of-day-based: every employee is
-        expected to scan all 4 times, regardless of when in the day each
-        scan happens. A record left open past MAX_OPEN_DURATION (see
-        auto_close_if_stale) is flagged and ignored here, so this scan starts
-        a new entry instead of being read as a step in that stale record.
+        Advance an already-identified employee through the day's attendance
+        cycle — entrada, [saída para o almoço, retorno do almoço,] saída —
+        one step per call, based on which timestamps the day's open record
+        still lacks:
+          1. no open record                -> record_entry
+          2. lunch_start not set:
+               within LUNCH_WINDOW         -> record_lunch_start
+               outside LUNCH_WINDOW        -> record_exit (closes the day; no lunch leg)
+          3. lunch_start set, no lunch_end  -> record_lunch_end (always, any time)
+          4. lunch cycle done               -> record_exit (closes the record)
+        Only step 2 is time-of-day-based — it's the one ambiguous scan (is
+        this "leaving for lunch" or "leaving for the day?"). Once lunch has
+        genuinely started (step 3), the next scan is always read as the
+        return, whenever it happens. A record left open past
+        MAX_OPEN_DURATION (see auto_close_if_stale) is flagged and ignored
+        here, so this scan starts a new entry instead of being read as a
+        step in that stale record.
 
         Propagates Employee.DoesNotExist and ValueError (inactive employee)
         raised by the record_* methods' _check_active, and DuplicateScanError
@@ -217,7 +243,9 @@ class AttendanceService:
         if open_record is None:
             return self.record_entry(employee_id)
         if open_record.lunch_start is None:
-            return self.record_lunch_start(employee_id)
+            if self._within_lunch_window():
+                return self.record_lunch_start(employee_id)
+            return self.record_exit(employee_id)
         if open_record.lunch_end is None:
             return self.record_lunch_end(employee_id)
         return self.record_exit(employee_id)

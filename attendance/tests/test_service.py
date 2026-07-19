@@ -1,7 +1,7 @@
 """Unit tests for AttendanceService (task 9.3)."""
 import pytest
-from datetime import date, timedelta
-from unittest.mock import MagicMock
+from datetime import date, time as dt_time, timedelta
+from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
 
@@ -16,6 +16,20 @@ def make_employee(**kw) -> Employee:
     defaults = dict(name="Test", role="Op", hire_date=date(2020, 1, 1))
     defaults.update(kw)
     return Employee.objects.create(**defaults)
+
+
+@pytest.fixture
+def in_lunch_window(monkeypatch):
+    """Force AttendanceService._within_lunch_window() to True, so the 2nd
+    scan-of-the-day tests are deterministic regardless of wall-clock time
+    when the suite actually runs (see toggle_for_employee's real-time check)."""
+    monkeypatch.setattr(AttendanceService, '_within_lunch_window', staticmethod(lambda: True))
+
+
+@pytest.fixture
+def outside_lunch_window(monkeypatch):
+    """Force AttendanceService._within_lunch_window() to False — the 2nd scan of the day should close the day immediately instead of starting a lunch leg."""
+    monkeypatch.setattr(AttendanceService, '_within_lunch_window', staticmethod(lambda: False))
 
 
 @pytest.mark.django_db
@@ -60,7 +74,7 @@ class TestAttendanceService:
         assert rec is not None
         assert rec.exit_time is None
 
-    def test_process_biometric_event_advances_to_lunch_start(self):
+    def test_process_biometric_event_advances_to_lunch_start(self, in_lunch_window):
         """The 2nd scan of the day is now "saída para o almoço", not "saída" — see TestAttendanceServiceLunchCycle for the full 4-scan cycle."""
         emp = make_employee()
         template_bytes = b"t" * 64
@@ -123,7 +137,7 @@ class TestAttendanceServiceScanCooldown:
         assert exc_info.value.employee_name == emp.name
         assert 0 < exc_info.value.retry_after_seconds <= AttendanceService.SCAN_COOLDOWN.total_seconds()
 
-    def test_toggle_after_cooldown_elapsed_succeeds(self):
+    def test_toggle_after_cooldown_elapsed_succeeds(self, in_lunch_window):
         emp = make_employee()
         svc = AttendanceService()
         svc.toggle_for_employee(emp.pk)
@@ -218,75 +232,79 @@ class TestAttendanceServiceStaleAutoClose:
         assert stale_record.exit_time is None
 
 
+def _advance_past_cooldown(emp, svc):
+    """Backdate the employee's most recent touch — the PresenceEvent and
+    every AttendanceRecord timestamp set so far, shifted together by the
+    same delta so their relative order is preserved — past SCAN_COOLDOWN,
+    so the next toggle_for_employee call isn't rejected as a duplicate scan
+    and satisfies the model's 1-second ordering (tests otherwise run several
+    calls within the same fraction of a second)."""
+    shift = AttendanceService.SCAN_COOLDOWN + timedelta(seconds=1)
+    last_event = PresenceEvent.objects.filter(employee=emp).latest('timestamp')
+    PresenceEvent.objects.filter(pk=last_event.pk).update(timestamp=last_event.timestamp - shift)
+    record = svc.get_open_record(emp.pk)
+    if record is None:
+        return
+    updates = {
+        field: getattr(record, field) - shift
+        for field in ('entry_time', 'lunch_start', 'lunch_end', 'exit_time')
+        if getattr(record, field) is not None
+    }
+    AttendanceRecord.objects.filter(pk=record.pk).update(**updates)
+
+
 @pytest.mark.django_db
 class TestAttendanceServiceLunchCycle:
     """
-    Every employee is expected to scan exactly 4 times a day, in a fixed
-    order — entrada, saída para o almoço, retorno do almoço, saída — via
-    toggle_for_employee. The cycle is ordinal (driven by which of the
-    record's 4 timestamps are still null), not time-of-day-based.
+    Every employee is expected to scan up to 4 times a day, in order —
+    entrada, saída para o almoço, retorno do almoço, saída — via
+    toggle_for_employee. These tests cover the full cycle happening inside
+    the lunch window (in_lunch_window fixture); see
+    TestAttendanceServiceLunchWindow for the 2nd-scan time-of-day
+    disambiguation itself (skip-lunch case included).
     """
 
-    def _advance_past_cooldown(self, emp, svc):
-        """Backdate the employee's most recent touch — the PresenceEvent and
-        every AttendanceRecord timestamp set so far, shifted together by the
-        same delta so their relative order is preserved — past
-        SCAN_COOLDOWN, so the next toggle_for_employee call isn't rejected
-        as a duplicate scan and satisfies the model's 1-second ordering."""
-        shift = AttendanceService.SCAN_COOLDOWN + timedelta(seconds=1)
-        last_event = PresenceEvent.objects.filter(employee=emp).latest('timestamp')
-        PresenceEvent.objects.filter(pk=last_event.pk).update(timestamp=last_event.timestamp - shift)
-        record = svc.get_open_record(emp.pk)
-        if record is None:
-            return
-        updates = {
-            field: getattr(record, field) - shift
-            for field in ('entry_time', 'lunch_start', 'lunch_end', 'exit_time')
-            if getattr(record, field) is not None
-        }
-        AttendanceRecord.objects.filter(pk=record.pk).update(**updates)
-
-    def test_full_daily_cycle_in_order(self):
+    def test_full_daily_cycle_in_order(self, in_lunch_window):
         emp = make_employee()
         svc = AttendanceService()
 
         entry = svc.toggle_for_employee(emp.pk)
         assert entry.entry_time is not None
         assert entry.lunch_start is None and entry.exit_time is None
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
 
         lunch_out = svc.toggle_for_employee(emp.pk)
         assert lunch_out.pk == entry.pk
         assert lunch_out.lunch_start is not None
         assert lunch_out.lunch_end is None and lunch_out.exit_time is None
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
 
         lunch_in = svc.toggle_for_employee(emp.pk)
         assert lunch_in.pk == entry.pk
         assert lunch_in.lunch_end is not None
         assert lunch_in.exit_time is None
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
 
         exit_ = svc.toggle_for_employee(emp.pk)
         assert exit_.pk == entry.pk
         assert exit_.exit_time is not None
 
         # A 5th scan starts a brand-new record, not another step on this one.
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
         next_day_entry = svc.toggle_for_employee(emp.pk)
         assert next_day_entry.pk != entry.pk
         assert next_day_entry.exit_time is None
 
-    def test_presence_events_marked_is_lunch_for_lunch_steps_only(self):
+    def test_presence_events_marked_is_lunch_for_lunch_steps_only(self, in_lunch_window):
         emp = make_employee()
         svc = AttendanceService()
 
         svc.toggle_for_employee(emp.pk)  # entrada
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
         svc.toggle_for_employee(emp.pk)  # saída almoço
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
         svc.toggle_for_employee(emp.pk)  # retorno almoço
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
         svc.toggle_for_employee(emp.pk)  # saída
 
         events = list(PresenceEvent.objects.filter(employee=emp).order_by('timestamp'))
@@ -328,7 +346,7 @@ class TestAttendanceServiceLunchCycle:
         with pytest.raises(ValueError):
             svc.record_lunch_end(emp.pk)
 
-    def test_get_current_status_reflects_lunch_stage(self):
+    def test_get_current_status_reflects_lunch_stage(self, in_lunch_window):
         emp = make_employee()
         svc = AttendanceService()
 
@@ -336,17 +354,17 @@ class TestAttendanceServiceLunchCycle:
         direction, is_lunch, _ = svc.get_current_status(emp.pk)
         assert (direction, is_lunch) == (PresenceEvent.IN, False)
 
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
         svc.toggle_for_employee(emp.pk)  # saída almoço
         direction, is_lunch, _ = svc.get_current_status(emp.pk)
         assert (direction, is_lunch) == (PresenceEvent.OUT, True)
 
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
         svc.toggle_for_employee(emp.pk)  # retorno almoço
         direction, is_lunch, _ = svc.get_current_status(emp.pk)
         assert (direction, is_lunch) == (PresenceEvent.IN, True)
 
-        self._advance_past_cooldown(emp, svc)
+        _advance_past_cooldown(emp, svc)
         svc.toggle_for_employee(emp.pk)  # saída
         direction, is_lunch, _ = svc.get_current_status(emp.pk)
         assert (direction, is_lunch) == (PresenceEvent.OUT, False)
@@ -391,3 +409,70 @@ class TestAttendanceRecordLunchOrderingValidation:
         record = AttendanceRecord(employee=emp, entry_time=now, exit_time=now + timedelta(hours=8))
         record.save()
         assert record.pk is not None
+
+
+@pytest.mark.django_db
+class TestAttendanceServiceLunchWindow:
+    """
+    The 2nd scan of the day is the one ambiguous case: is the employee
+    leaving for lunch or leaving for the day? Disambiguated by whether
+    "now" falls inside AttendanceService.LUNCH_WINDOW_START/END — everyone
+    else (1st, 3rd, 4th scans) is unaffected by time of day.
+    """
+
+    def test_second_scan_inside_window_starts_lunch(self, in_lunch_window):
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)  # entrada
+        _advance_past_cooldown(emp, svc)
+
+        record = svc.toggle_for_employee(emp.pk)
+
+        assert record.lunch_start is not None
+        assert record.exit_time is None
+
+    def test_second_scan_outside_window_closes_the_day(self, outside_lunch_window):
+        """An employee who skips lunch (or forgets the lunch-out scan) and
+        touches again outside the lunch window must have their day closed
+        immediately — not left open waiting for a "retorno do almoço" that
+        was never coming, which used to only get caught by the ~16h
+        MAX_OPEN_DURATION auto-close and showed a wrong "em almoço" status
+        in the meantime."""
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)  # entrada
+        _advance_past_cooldown(emp, svc)
+
+        record = svc.toggle_for_employee(emp.pk)
+
+        assert record.lunch_start is None
+        assert record.exit_time is not None
+
+    def test_third_scan_is_lunch_end_regardless_of_window(self, in_lunch_window):
+        """Once lunch has genuinely started, the return scan is read as such any time — the window only disambiguates the 2nd scan."""
+        emp = make_employee()
+        svc = AttendanceService()
+        svc.toggle_for_employee(emp.pk)  # entrada
+        _advance_past_cooldown(emp, svc)
+        svc.toggle_for_employee(emp.pk)  # saída almoço (inside window)
+        _advance_past_cooldown(emp, svc)
+
+        with patch.object(AttendanceService, '_within_lunch_window', staticmethod(lambda: False)):
+            record = svc.toggle_for_employee(emp.pk)  # retorno, well outside any lunch window
+
+        assert record.lunch_end is not None
+        assert record.exit_time is None
+
+    def test_within_lunch_window_boundaries(self):
+        with patch('attendance.service.timezone.localtime') as mock_localtime:
+            mock_localtime.return_value.time.return_value = dt_time(12, 0)
+            assert AttendanceService._within_lunch_window() is True
+
+            mock_localtime.return_value.time.return_value = dt_time(10, 59)
+            assert AttendanceService._within_lunch_window() is False
+
+            mock_localtime.return_value.time.return_value = dt_time(14, 30)
+            assert AttendanceService._within_lunch_window() is True
+
+            mock_localtime.return_value.time.return_value = dt_time(14, 31)
+            assert AttendanceService._within_lunch_window() is False
