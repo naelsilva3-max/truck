@@ -16,7 +16,6 @@ urlpatterns = [
     path("<int:pk>/edit/", views.VisitorUpdateView.as_view(), name="update"),
     # Visitor picker JSON API (visit registration form)
     path("api/search/", views.VisitorSearchView.as_view(), name="api_search"),
-    path("api/quick-create/", views.VisitorQuickCreateView.as_view(), name="api_quick_create"),
     # Visit management
     path("visits/", views.VisitListView.as_view(), name="visit_list"),
     path("visits/new/", views.VisitCreateView.as_view(), name="visit_create"),

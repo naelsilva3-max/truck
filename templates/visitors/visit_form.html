@@ -5,7 +5,10 @@
 {% block content %}
 <div class="page-header">
   <h1>{{ title }}</h1>
-  <a href="{% url 'visitors:visit_list' %}" class="btn btn--secondary">← Voltar</a>
+  <div class="d-flex gap-2">
+    <a href="{% url 'visitors:visit_list' %}" class="btn btn--secondary">← Voltar</a>
+    <a href="{% url 'visitors:create' %}" class="btn btn--primary">+ Novo Visitante</a>
+  </div>
 </div>
 
 <div class="form-card">
@@ -32,29 +35,6 @@
         <div class="visitor-picker-selected d-none" id="visitor-selected">
           <span class="badge badge--info" id="visitor-selected-name"></span>
           <button type="button" class="btn-link" id="visitor-change-btn">trocar</button>
-        </div>
-
-        <div class="visitor-quick-create d-none" id="visitor-quick-create">
-          <p class="text-sm text-muted mb-2">Cadastro rápido — dá para completar a ficha (foto, documento) depois em Visitantes.</p>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Nome <span class="required">*</span></label>
-              <input type="text" id="qc-name" class="form-control">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Telefone</label>
-              <input type="text" id="qc-phone" class="form-control">
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Empresa</label>
-            <input type="text" id="qc-company" class="form-control">
-          </div>
-          <div id="qc-error" class="form-error d-none"></div>
-          <div class="d-flex gap-2">
-            <button type="button" class="btn btn--primary btn--sm" id="qc-save-btn">Cadastrar e selecionar</button>
-            <button type="button" class="btn btn--secondary btn--sm" id="qc-cancel-btn">Cancelar</button>
-          </div>
         </div>
 
         {% if form.visitor.errors %}<div class="form-error">{% for e in form.visitor.errors %}{{ e }}{% endfor %}</div>{% endif %}
@@ -120,7 +100,6 @@
 <script>
 (function () {
   const SEARCH_URL = '{% url "visitors:api_search" %}';
-  const QUICK_CREATE_URL = '{% url "visitors:api_quick_create" %}';
 
   const hiddenInput = document.getElementById('id_visitor');
   const searchInput = document.getElementById('visitor-search');
@@ -129,26 +108,12 @@
   const selectedBox = document.getElementById('visitor-selected');
   const selectedName = document.getElementById('visitor-selected-name');
   const changeBtn = document.getElementById('visitor-change-btn');
-  const quickCreateBox = document.getElementById('visitor-quick-create');
-  const qcName = document.getElementById('qc-name');
-  const qcPhone = document.getElementById('qc-phone');
-  const qcCompany = document.getElementById('qc-company');
-  const qcError = document.getElementById('qc-error');
-  const qcSaveBtn = document.getElementById('qc-save-btn');
-  const qcCancelBtn = document.getElementById('qc-cancel-btn');
-
-  function getCookie(name) {
-    const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-    return match ? decodeURIComponent(match[2]) : null;
-  }
-  const csrftoken = getCookie('csrftoken');
 
   function selectVisitor(v) {
     hiddenInput.value = v.id;
     selectedName.textContent = v.company ? (v.name + ' — ' + v.company) : v.name;
     pickerBox.classList.add('d-none');
     selectedBox.classList.remove('d-none');
-    quickCreateBox.classList.add('d-none');
     resultsBox.innerHTML = '';
     resultsBox.classList.remove('active');
   }
@@ -161,7 +126,7 @@
     searchInput.focus();
   }
 
-  function renderResults(results, query) {
+  function renderResults(results) {
     resultsBox.innerHTML = '';
     results.forEach(function (v) {
       const item = document.createElement('div');
@@ -178,38 +143,26 @@
       resultsBox.appendChild(item);
     });
 
-    const createItem = document.createElement('div');
-    createItem.className = 'visitor-picker-item visitor-picker-item--create';
-    createItem.textContent = '+ Cadastrar "' + query + '" como novo visitante';
-    createItem.addEventListener('click', function () { openQuickCreate(query); });
-    resultsBox.appendChild(createItem);
-
     resultsBox.classList.add('active');
   }
 
-  function openQuickCreate(prefillName) {
-    resultsBox.classList.remove('active');
-    quickCreateBox.classList.remove('d-none');
-    qcName.value = prefillName || searchInput.value;
-    qcPhone.value = '';
-    qcCompany.value = '';
-    qcError.classList.add('d-none');
-    qcName.focus();
+  function runSearch(query) {
+    fetch(SEARCH_URL + '?q=' + encodeURIComponent(query))
+      .then(function (r) { return r.json(); })
+      .then(function (data) { renderResults(data.results); });
   }
 
   let debounceTimer = null;
   searchInput.addEventListener('input', function () {
     const query = searchInput.value.trim();
     clearTimeout(debounceTimer);
-    if (query.length < 2) {
-      resultsBox.classList.remove('active');
-      return;
-    }
-    debounceTimer = setTimeout(function () {
-      fetch(SEARCH_URL + '?q=' + encodeURIComponent(query))
-        .then(function (r) { return r.json(); })
-        .then(function (data) { renderResults(data.results, query); });
-    }, 250);
+    debounceTimer = setTimeout(function () { runSearch(query); }, 250);
+  });
+
+  // Clicking/focusing the empty field opens it like a dropdown (default list);
+  // typing filters it (search-as-you-type), handled by the 'input' listener above.
+  searchInput.addEventListener('focus', function () {
+    runSearch(searchInput.value.trim());
   });
 
   document.addEventListener('click', function (e) {
@@ -219,41 +172,6 @@
   });
 
   changeBtn.addEventListener('click', clearSelection);
-  qcCancelBtn.addEventListener('click', function () {
-    quickCreateBox.classList.add('d-none');
-  });
-
-  qcSaveBtn.addEventListener('click', function () {
-    const name = qcName.value.trim();
-    if (!name) {
-      qcError.textContent = 'Nome é obrigatório.';
-      qcError.classList.remove('d-none');
-      return;
-    }
-    fetch(QUICK_CREATE_URL, {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': csrftoken,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ name: name, phone: qcPhone.value.trim(), company: qcCompany.value.trim() }),
-    })
-      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
-      .then(function (result) {
-        if (result.ok) {
-          selectVisitor(result.data);
-        } else {
-          const errs = result.data.errors || {};
-          const messages = Object.keys(errs).map(function (k) { return errs[k].join(' '); }).join(' ');
-          qcError.textContent = messages || 'Não foi possível cadastrar o visitante.';
-          qcError.classList.remove('d-none');
-        }
-      })
-      .catch(function () {
-        qcError.textContent = 'Erro de conexão. Tente novamente.';
-        qcError.classList.remove('d-none');
-      });
-  });
 
   if (window._selectedVisitor) {
     selectVisitor(window._selectedVisitor);

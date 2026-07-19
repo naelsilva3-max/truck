@@ -106,40 +106,27 @@ class VisitorUpdateView(LoginRequiredMixin, View):
 
 
 class VisitorSearchView(LoginRequiredMixin, View):
-    """JSON search backing the visitor picker on the visit registration form."""
+    """JSON search backing the visitor picker on the visit registration form.
+
+    An empty query (the picker is opened by clicking/focusing the field
+    without typing) returns a default list instead of nothing, so the field
+    behaves like a dropdown as well as a search-as-you-type box.
+    """
+    DEFAULT_LIMIT = 20
+    SEARCH_LIMIT = 10
 
     def get(self, request):
         query = request.GET.get('q', '').strip()
-        if len(query) < 2:
-            return JsonResponse({'results': []})
-        visitors = Visitor.objects.filter(
-            Q(name__icontains=query) | Q(company__icontains=query) | Q(phone__icontains=query)
-        ).order_by('name')[:10]
+        if query:
+            visitors = Visitor.objects.filter(
+                Q(name__icontains=query) | Q(company__icontains=query) | Q(phone__icontains=query)
+            ).order_by('name')[:self.SEARCH_LIMIT]
+        else:
+            visitors = Visitor.objects.all().order_by('name')[:self.DEFAULT_LIMIT]
         return JsonResponse({'results': [
             {'id': v.pk, 'name': v.name, 'company': v.company, 'phone': v.phone}
             for v in visitors
         ]})
-
-
-class VisitorQuickCreateView(LoginRequiredMixin, View):
-    """
-    Minimal visitor creation used inline from the visit registration form,
-    for a visitor who isn't registered yet. Only name/phone/company — a full
-    profile (photos, RG/CPF, etc.) can be filled in later from the visitor's
-    own edit page. Reuses VisitorForm so validation (e.g. duplicate name)
-    matches the full creation form exactly, minus the RG/CPF requirement.
-    """
-
-    def post(self, request):
-        form = VisitorForm({
-            'name': request.POST.get('name', ''),
-            'phone': request.POST.get('phone', ''),
-            'company': request.POST.get('company', ''),
-        }, require_identity=False)
-        if form.is_valid():
-            visitor = form.save()
-            return JsonResponse({'id': visitor.pk, 'name': visitor.name, 'company': visitor.company, 'phone': visitor.phone})
-        return JsonResponse({'errors': form.errors}, status=400)
 
 
 class VisitListView(LoginRequiredMixin, View):
@@ -280,7 +267,8 @@ class VisitCreateView(LoginRequiredMixin, View):
             return redirect('visitors:visit_list')
         # Re-render keeps the picked visitor (if any) selected instead of
         # silently reverting to the empty search box.
-        selected_visitor = Visitor.objects.filter(pk=request.POST.get('visitor')).first()
+        visitor_pk = request.POST.get('visitor')
+        selected_visitor = Visitor.objects.filter(pk=visitor_pk).first() if visitor_pk else None
         return render(request, self.template_name, {
             'form': form,
             'action': 'Registrar',

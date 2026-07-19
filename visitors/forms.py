@@ -71,10 +71,6 @@ class VisitorForm(forms.ModelForm):
             'cpf': 'Validado automaticamente.',
         }
 
-    def __init__(self, *args, require_identity=True, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.require_identity = require_identity
-
     def clean_name(self):
         name = self.cleaned_data.get('name')
         if name:
@@ -111,9 +107,6 @@ class VisitorForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        if not self.require_identity:
-            return cleaned
-
         is_foreigner = cleaned.get('is_foreigner')
         if is_foreigner:
             if not cleaned.get('foreign_document_number'):

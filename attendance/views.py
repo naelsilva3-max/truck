@@ -19,7 +19,7 @@ from employee_truck_control.http import infinite_scroll_json, is_ajax_request, p
 from employees.models import Employee
 from attendance.models import AttendanceRecord, PresenceEvent
 from attendance.service import AttendanceService
-from visitors.models import Visit
+from visitors.models import Visit, Visitor
 
 
 class AttendanceListView(LoginRequiredMixin, View):
@@ -265,6 +265,7 @@ class PresenceHistoryView(LoginRequiredMixin, View):
     def get(self, request):
         from django.core.paginator import Paginator
         employee_pk = request.GET.get('employee')
+        visitor_pk = request.GET.get('visitor')
         start_date = parse_date_param(request.GET.get('start_date'))
         end_date = parse_date_param(request.GET.get('end_date'))
         filter_type = request.GET.get('type', 'all')
@@ -301,6 +302,10 @@ class PresenceHistoryView(LoginRequiredMixin, View):
         # Get visitor visit events
         if filter_type in ('all', 'visitors'):
             visits_qs = Visit.objects.select_related('visitor', 'responsible').order_by('-visit_date', '-arrival_time')
+
+            if visitor_pk:
+                visitor = get_object_or_404(Visitor, pk=visitor_pk)
+                visits_qs = visits_qs.filter(visitor=visitor)
 
             if start_date:
                 visits_qs = visits_qs.filter(visit_date__gte=start_date)
@@ -351,7 +356,12 @@ class PresenceHistoryView(LoginRequiredMixin, View):
         if employee_pk:
             employee = get_object_or_404(Employee, pk=employee_pk)
 
+        visitor = None
+        if visitor_pk:
+            visitor = get_object_or_404(Visitor, pk=visitor_pk)
+
         employees = Employee.objects.filter(is_active=True).order_by('name')
+        visitors = Visitor.objects.all().order_by('name')
 
         paginator = Paginator(events, self._page_size(request))
         page_obj = paginator.get_page(request.GET.get('page', 1))
@@ -369,6 +379,8 @@ class PresenceHistoryView(LoginRequiredMixin, View):
             'page_obj': page_obj,
             'employees': employees,
             'selected_employee': employee,
+            'visitors': visitors,
+            'selected_visitor': visitor,
             'start_date': start_date,
             'end_date': end_date,
             'filter_type': filter_type,

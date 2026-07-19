@@ -6,9 +6,8 @@
 <div class="page-header">
   <h1>Registro de Entrada e Saída</h1>
   <div class="d-flex gap-2">
-    <a href="{% url 'presence_history' %}?type=all{% if selected_employee %}&employee={{ selected_employee.pk }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" class="btn btn--sm {% if filter_type == 'all' %}btn--primary{% else %}btn--outline{% endif %}">Todos</a>
     <a href="{% url 'presence_history' %}?type=employees{% if selected_employee %}&employee={{ selected_employee.pk }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" class="btn btn--sm {% if filter_type == 'employees' %}btn--primary{% else %}btn--outline{% endif %}">Funcionários</a>
-    <a href="{% url 'presence_history' %}?type=visitors{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" class="btn btn--sm {% if filter_type == 'visitors' %}btn--primary{% else %}btn--outline{% endif %}">Visitantes</a>
+    <a href="{% url 'presence_history' %}?type=visitors{% if selected_visitor %}&visitor={{ selected_visitor.pk }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" class="btn btn--sm {% if filter_type == 'visitors' %}btn--primary{% else %}btn--outline{% endif %}">Visitantes</a>
   </div>
 </div>
 
@@ -16,6 +15,17 @@
   <div class="card-body">
     <form method="get">
       <div class="form-row">
+        {% if filter_type == 'visitors' %}
+        <div class="form-group">
+          <label for="visitor">Visitante</label>
+          <select name="visitor" id="visitor" class="form-control">
+            <option value="">Todos</option>
+            {% for vis in visitors %}
+              <option value="{{ vis.pk }}" {% if selected_visitor and selected_visitor.pk == vis.pk %}selected{% endif %}>{{ vis.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
         <div class="form-group">
           <label for="employee">Funcionário</label>
           <select name="employee" id="employee" class="form-control">
@@ -25,6 +35,7 @@
             {% endfor %}
           </select>
         </div>
+        {% endif %}
         <div class="form-group">
           <label for="start_date">Data Início</label>
           <input type="date" name="start_date" id="start_date" class="form-control" value="{{ start_date|date:'Y-m-d'|default:'' }}">
@@ -63,7 +74,7 @@
 <script>
 window.startLivePoll({
   tbodyId: 'infinite-tbody',
-  url: '{% url "presence_history" %}?type={{ filter_type }}{% if selected_employee %}&employee={{ selected_employee.pk }}{% endif %}'
+  url: '{% url "presence_history" %}?type={{ filter_type }}{% if selected_employee %}&employee={{ selected_employee.pk }}{% endif %}{% if selected_visitor %}&visitor={{ selected_visitor.pk }}{% endif %}'
 });
 </script>
 {% endblock %}
