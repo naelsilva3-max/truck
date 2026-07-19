@@ -6,18 +6,27 @@
 ;      VPS via `python manage.py kiosk_device create`).
 ;   2. Reminds the admin to have the ZKTeco ZKFinger driver already
 ;      installed (not bundled here -- see docs/kiosk_deployment.md).
-;   3. Copies kiosk_agent.exe / kiosk_agent_service.exe to Program Files.
-;   4. Writes .env under %LOCALAPPDATA%\ZK9500Kiosk\ with the collected
+;   3. Before copying files (ssInstall): stops + unregisters any existing
+;      "ZK9500KioskListener" Scheduled Task and force-kills any running
+;      kiosk_agent(_service).exe process. Needed for reinstalls/upgrades --
+;      Windows locks a running exe against being overwritten, and without
+;      this step the old process would otherwise keep running the old code
+;      until its own next restart. kiosk_agent.py's own named-mutex
+;      singleton lock (see _acquire_singleton_lock) is a second, independent
+;      safety net that stops two `listen` processes ever touching the
+;      reader at once even if this step were somehow skipped.
+;   4. Copies kiosk_agent.exe / kiosk_agent_service.exe to Program Files.
+;   5. Writes .env under %LOCALAPPDATA%\ZK9500Kiosk\ with the collected
 ;      values -- NOT next to the exes: Program Files isn't writable by the
 ;      Scheduled Task, which intentionally runs as the logged-on user, not
 ;      elevated (kiosk_agent.py reads/logs from the same folder -- see the
 ;      comment above its logging setup).
-;   5. Registers + starts the "ZK9500KioskListener" Scheduled Task
+;   6. Registers + starts the "ZK9500KioskListener" Scheduled Task
 ;      (kiosk_agent_service.exe listen, at logon, auto-restart on failure).
-;   6. Uninstalling removes the Scheduled Task before removing the files.
+;   7. Uninstalling removes the Scheduled Task before removing the files.
 
 #define MyAppName "ZK9500 Kiosk"
-#define MyAppVersion "1.1"
+#define MyAppVersion "1.2"
 
 [Setup]
 AppId={{5F051ACE-0489-4AD6-844C-FDBD962193CC}
@@ -88,11 +97,38 @@ begin
   end;
 end;
 
+procedure StopExistingInstance;
+var
+  ScriptContent, ScriptPath: String;
+  ResultCode: Integer;
+begin
+  { Runs before [Files] copies anything (see CurStepChanged's ssInstall
+    branch below) so a reinstall/upgrade never fights a locked exe or
+    leaves the old process running the old code in the background. Safe
+    to run even on a first-time install -- every cmdlet here is a no-op
+    (via -ErrorAction SilentlyContinue) when nothing exists yet. }
+  ScriptContent :=
+    'Stop-ScheduledTask -TaskName "ZK9500KioskListener" -ErrorAction SilentlyContinue' + #13#10 +
+    'Unregister-ScheduledTask -TaskName "ZK9500KioskListener" -Confirm:$false -ErrorAction SilentlyContinue' + #13#10 +
+    'Get-Process -Name "kiosk_agent_service" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue' + #13#10 +
+    'Get-Process -Name "kiosk_agent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue' + #13#10 +
+    'Start-Sleep -Milliseconds 500' + #13#10;
+  ScriptPath := ExpandConstant('{tmp}') + '\_stop_previous.ps1';
+  SaveStringToFile(ScriptPath, ScriptContent, False);
+  Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  DeleteFile(ScriptPath);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   AppDir, DataDir, EnvContent, ScriptContent, ScriptPath: String;
   ResultCode: Integer;
 begin
+  if CurStep = ssInstall then
+  begin
+    StopExistingInstance;
+  end;
+
   if CurStep = ssPostInstall then
   begin
     AppDir := ExpandConstant('{app}');
