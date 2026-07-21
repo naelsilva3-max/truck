@@ -1,0 +1,21 @@
+# Copie para /etc/systemd/system/auto_close_stale_attendance.timer na VPS,
+# junto com o auto_close_stale_attendance.service correspondente. Depois:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now auto_close_stale_attendance.timer
+#
+# Roda uma vez por dia (03:30, depois do backup diário das 03:00 — ver
+# deploy/backup_db.sh) para fechar AttendanceRecords abertos há mais de
+# AttendanceService.MAX_OPEN_DURATION (16h) e marcá-los para revisão em
+# "Pontos Pendentes de Revisão". Sem este timer, um registro sem saída só é
+# detectado quando o próprio funcionário bate o ponto de novo (ver
+# AttendanceService.toggle_for_employee) — se ele não voltar a bater, o
+# registro nunca aparece como pendente.
+[Unit]
+Description=Diariamente, fecha registros de ponto abertos além do turno máximo
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

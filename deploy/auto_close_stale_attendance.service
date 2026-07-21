@@ -1,0 +1,15 @@
+# Copie para /etc/systemd/system/auto_close_stale_attendance.service na VPS.
+# Ajuste User/Group/WorkingDirectory/paths conforme onde o repo for clonado.
+# Disparado diariamente pelo companion auto_close_stale_attendance.timer —
+# não precisa (nem deve) ser habilitado/iniciado diretamente.
+[Unit]
+Description=Flag AttendanceRecords open past MAX_OPEN_DURATION (ponto pendente)
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=www-data
+WorkingDirectory=/home/deploy/app
+EnvironmentFile=/home/deploy/app/.env
+ExecStart=/home/deploy/app/.venv/bin/python manage.py auto_close_stale_attendance

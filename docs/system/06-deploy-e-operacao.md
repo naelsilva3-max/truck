@@ -44,6 +44,20 @@ Nunca commitar o `.env` — ele já está fora do controle de versão (`.gitigno
 
 Não há cópia para armazenamento externo/off-site no script — os dumps ficam só no disco local da VPS. Considerar isso ao planejar recuperação de desastre.
 
+## Ponto pendente de revisão (job agendado)
+
+`AttendanceRecord`s sem saída ficam "em aberto" indefinidamente até algo os feche. Isso normalmente acontece quando o próprio funcionário bate o ponto de novo (`AttendanceService.toggle_for_employee` chama `auto_close_if_stale` antes de processar a nova batida) — mas se ele não voltar a bater (afastamento, desligamento, esqueceu mesmo), o registro nunca seria detectado sem uma segunda via.
+
+Essa segunda via é `python manage.py auto_close_stale_attendance` (`attendance/management/commands/auto_close_stale_attendance.py`), que marca como `auto_closed=True` qualquer registro aberto há mais de `AttendanceService.MAX_OPEN_DURATION` (16h) — só então ele aparece em **Pontos Pendentes de Revisão** para um `master` preencher a saída real.
+
+Agendado via systemd timer (`deploy/auto_close_stale_attendance.timer` + `.service`), diariamente às 03:30 (depois do backup das 03:00):
+```
+sudo cp deploy/auto_close_stale_attendance.service deploy/auto_close_stale_attendance.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now auto_close_stale_attendance.timer
+```
+Sem esse timer habilitado na VPS, registros sem saída de funcionários que não batem o ponto de novo ficam represados — nem "em aberto" nas telas normais fica óbvio, nem aparecem como pendentes.
+
 ## Restauração
 
 Não há script pronto de restore. Fluxo manual:
